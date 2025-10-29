@@ -1,0 +1,163 @@
+/* ==================================== */
+/* Estilos Globales de la Pokédex (Estilo GBA/Pokémon) */
+/* ==================================== */
+
+/* Fuente: Usaremos una fuente simple y de alto contraste */
+body {
+    background-color: #f0f0f0; /* Fondo general */
+    font-family: Arial, Helvetica, sans-serif;
+}
+
+/* Estilo para el Navbar: Fondo Gris Oscuro de la GBA */
+.navbar.bg-danger {
+    /* Fondo del marco de la Pokédex (Gris oscuro/Azul de la GBA) */
+    background-color: #212529 !important; /* Gris muy oscuro */
+    box-shadow: 0 4px 0 rgba(0, 0, 0, 0.2); /* Sombra alta para simular elevación */
+    border-bottom: 4px solid #495057; /* Borde más oscuro abajo para "profundidad" */
+}
+
+/* Estilo de la Barra de Búsqueda (Input) */
+.input-group .form-control.border-danger {
+    border-color: #CC0000 !important;
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.1); /* Efecto de "hundimiento" */
+}
+.input-group-text.border-danger {
+    border-color: #CC0000 !important;
+}
+
+/* ==================================== */
+/* Estilos de las Cartas y Contraste */
+/* ==================================== */
+
+.card {
+    border-radius: 4px; /* Bordes más cuadrados */
+    border: 2px solid #343a40; /* Borde sólido oscuro */
+    box-shadow: none; /* Eliminar sombra suave de Bootstrap */
+    transition: transform 0.1s ease;
+}
+
+.card:hover {
+    transform: translateY(-2px); /* Menos elevación */
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+/* Estilo para tarjetas NO capturadas (Gris y Opacidad) */
+.card.bg-light {
+    background-color: #DDDDDD !important; /* Gris claro de fondo de menú GBA */
+}
+.card-img-top[style*="opacity: 0.4"] {
+    filter: grayscale(100%); 
+}
+
+/* ==================================== */
+/* Colores de los Tipos Pokémon */
+/* ==================================== */
+
+.badge {
+    color: white !important;
+    font-weight: bold;
+    text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.5); /* Sombra dura para el texto (pixel art) */
+    border: 1px solid rgba(0, 0, 0, 0.4);
+    border-radius: 3px;
+    padding: 0.3em 0.6em;
+}
+
+/* Colores de Tipos (Mantenemos los tonos de alto contraste) */
+.type-normal { background-color: #A8A878 !important; }
+.type-fuego { background-color: #F08030 !important; }
+.type-agua { background-color: #6890F0 !important; }
+.type-planta { background-color: #78C850 !important; }
+.type-eléctrico { background-color: #F8D030 !important; }
+.type-hielo { background-color: #98D8D8 !important; }
+.type-lucha { background-color: #C03028 !important; }
+.type-veneno { background-color: #A040A0 !important; }
+.type-tierra { background-color: #E0C068 !important; }
+.type-volador { background-color: #A890F0 !important; }
+.type-psíquico { background-color: #F85888 !important; }
+.type-bicho { background-color: #A8B820 !important; }
+.type-roca { background-color: #B8A038 !important; }
+.type-fantasma { background-color: #705898 !important; }
+.type-dragón { background-color: #7038F8 !important; }
+.type-acero { background-color: #B8B8D0 !important; }
+.type-hada { background-color: #EE99AC !important; }
+
+/* Estilo del Modal para que el encabezado y el cuerpo contrasten */
+.modal-header.bg-danger {
+    background-color: #CC0000 !important; /* Rojo Fuego para el encabezado del Modal */
+    border-bottom: 2px solid #990000;
+}
+.modal-content {
+    border: 3px solid #343a40;
+    border-radius: 6px;
+}
+
+/* ==================================== */
+/* Estilo Barra de Progreso GBA (CORRECCIÓN FINAL) */
+/* ==================================== */
+
+.progress-gba {
+    border: none; 
+    border-radius: 12px; /* Bordes redondeados */
+    /* El fondo del CONTENEDOR ahora es el borde bicolor */
+    background-image: linear-gradient(to right, #CC0000 0%, #CC0000 50%, #198754 50%, #198754 100%);
+    
+    position: relative; 
+    height: 25px;
+    z-index: 1; 
+    overflow: hidden;
+    
+    /* El padding crea el espacio para que se vea el borde */
+    padding: 3px;
+}
+
+/* Pseudo-elemento para el fondo gris interno (El "fondo inactivo" de la barra) */
+.progress-gba::before {
+    content: '';
+    position: absolute;
+    top: 3px;    /* 3px de borde */
+    left: 3px;   /* 3px de borde */
+    right: 3px;  /* 3px de borde */
+    bottom: 3px; /* 3px de borde */
+    
+    /* Fondo gris que se ve a través del borde */
+    background-color: #AAAAAA; 
+    border-radius: 9px; /* Bordes redondeados internos */
+    z-index: 1; /* Bajo la barra de progreso que se llena (z-index: 3) */
+}
+
+/* Estilo de la barra interna (progreso que se llena) */
+.progress-gba .progress-bar {
+    z-index: 3; 
+    background-color: #CC0000 !important; /* Rojo Fuego para la barra que se llena */
+    height: 100%;
+    border-radius: 9px;
+    transition: width 0.6s ease;
+    
+    /* Hacemos que la barra de progreso NO muestre el texto (ya es estático) */
+    text-indent: -9999px; 
+    position: relative; 
+}
+
+/* Estilo del Texto de Progreso Estático */
+.progress-gba::after {
+    /* El texto estático debe estar encima de todo */
+    content: attr(data-progreso); 
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #212529; /* Color oscuro para el texto estático */
+    font-weight: bold;
+    font-size: 0.9rem;
+    z-index: 5; /* Asegura que el texto esté visible sobre la barra que se llena */
+    pointer-events: none; 
+}
+
+/* Eliminamos los estilos del borde dividido anterior, ya no son necesarios */
+.progress-border-wrap, .progress-half, .border-rf, .border-vh {
+    display: none !important; 
+}
