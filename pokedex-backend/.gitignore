@@ -1,0 +1,25 @@
+# Archivos de dependencia y paquetes generados
+# ------------------------------------------
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*dist
+*.egg-info
+
+# Logs y bases de datos de desarrollo
+# ------------------------------------------
+*.log
+*.sqlite
+/instance
+
+# Archivos de sistema operativo y editores
+# ------------------------------------------
+.DS_Store
+.vscode/
+
+# Configuración y secretos
+# ------------------------------------------
+.env
+.flaskenv
