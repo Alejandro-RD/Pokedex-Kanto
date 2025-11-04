@@ -167,7 +167,7 @@ POKEMON_DATA = [
 # 2. CONFIGURACIÓN E INICIALIZACIÓN DE LA APLICACIÓN
 # =======================================================
 app = Flask(__name__)
-CORS(app) 
+CORS(app, resources={r"/api/*": {"origins": "https://pokedex-kanto-app.vercel.app"}})
 
 # --- IMPORTANTE: USAMOS LA VARIABLE DE ENTORNO ---
 import os
