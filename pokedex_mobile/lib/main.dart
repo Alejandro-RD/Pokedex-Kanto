@@ -1,122 +1,255 @@
+// lib/main.dart
+
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http; // Paquete para peticiones HTTP
+import 'dart:convert'; // Para convertir JSON
+
+// ⚠️ IMPORTANTE: REEMPLAZA CON TU URL REAL DE RENDER
+const String apiUrl = 'https://pokedex-api-o6hc.onrender.com/api/pokemon';
 
 void main() {
-  runApp(const MyApp());
+  runApp(const PokedexApp());
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+// =======================================================================
+// 1. MODELO DE DATOS (POKEMON)
+// =======================================================================
 
-  // This widget is the root of your application.
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Flutter Demo',
-      theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // TRY THIS: Try running your application with "flutter run". You'll see
-        // the application has a purple toolbar. Then, without quitting the app,
-        // try changing the seedColor in the colorScheme below to Colors.green
-        // and then invoke "hot reload" (save your changes or press the "hot
-        // reload" button in a Flutter-supported IDE, or press "r" if you used
-        // the command line to start the app).
-        //
-        // Notice that the counter didn't reset back to zero; the application
-        // state is not lost during the reload. To reset the state, use hot
-        // restart instead.
-        //
-        // This works for code too, not just values: Most code changes can be
-        // tested with just a hot reload.
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
-      ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
+class Pokemon {
+  final int id;
+  final String name;
+  final List<String> type;
+  final String exclusivo;
+  // bool capturado; // (Se añadiría para la lógica de persistencia real)
+
+  Pokemon({
+    required this.id,
+    required this.name,
+    required this.type,
+    required this.exclusivo,
+    // this.capturado = false,
+  });
+
+  // Constructor para crear un objeto Pokemon desde JSON
+  factory Pokemon.fromJson(Map<String, dynamic> json) {
+    // La API de Flask devuelve 'type' como un array de strings
+    List<String> typesList = [];
+    if (json['type'] is List) {
+      typesList = List<String>.from(json['type']);
+    } else if (json['type'] is String) {
+      // Esto maneja el caso de que Flask haya devuelto el string separado por comas
+      typesList = (json['type'] as String).split(',');
+    }
+
+    return Pokemon(
+      id: json['id'],
+      name: json['name'],
+      type: typesList.where((t) => t.isNotEmpty).toList(), // Filtra strings vacíos
+      exclusivo: json['exclusivo'],
     );
   }
 }
 
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
+// =======================================================================
+// 2. WIDGETS AUXILIARES (TIPOS)
+// =======================================================================
 
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
-
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
-
-  final String title;
-
-  @override
-  State<MyHomePage> createState() => _MyHomePageState();
+Color _getTypeColor(String type) {
+  switch (type.toLowerCase()) {
+    case 'planta': return Colors.green[600]!;
+    case 'veneno': return Colors.purple[600]!;
+    case 'fuego': return Colors.deepOrange[700]!;
+    case 'agua': return Colors.blue[600]!;
+    case 'bicho': return Colors.lightGreen[700]!;
+    case 'normal': return Colors.brown[300]!;
+    case 'eléctrico': return Colors.amber[600]!;
+    case 'tierra': return Colors.orange[800]!;
+    case 'lucha': return Colors.red[800]!;
+    case 'psíquico': return Colors.pink[400]!;
+    case 'roca': return Colors.brown[600]!;
+    case 'fantasma': return Colors.indigo[400]!;
+    default: return Colors.grey;
+  }
 }
 
-class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
+// lib/main.dart (Dentro de la clase TypeChip)
 
-  void _incrementCounter() {
-    setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
-    });
+class TypeChip extends StatelessWidget {
+  final String type;
+
+  const TypeChip({required this.type, super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 2.0),
+      child: Chip(
+        // Ajustamos el padding para hacerlo más compacto
+        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        labelPadding: const EdgeInsets.symmetric(horizontal: 2.0, vertical: 0), // Padding horizontal y vertical mínimo
+
+        label: Text(
+          type,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 10, // Tamaño de fuente pequeño (ajustar según necesidad)
+          ),
+        ),
+        backgroundColor: _getTypeColor(type),
+        // Eliminamos el padding anterior y usamos el nuevo labelPadding
+      ),
+    );
+  }
+}
+
+// =======================================================================
+// 3. WIDGET PRINCIPAL DE LA APLICACIÓN
+// =======================================================================
+
+class PokedexApp extends StatelessWidget {
+  const PokedexApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Pokédex Kanto (RF/VH)',
+      theme: ThemeData(
+        primarySwatch: Colors.red,
+        scaffoldBackgroundColor: Colors.grey[200],
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Color(0xFFCC0000), // Rojo Fuego GBA
+          foregroundColor: Colors.white,
+        ),
+      ),
+      home: const PokedexHomePage(),
+    );
+  }
+}
+
+class PokedexHomePage extends StatefulWidget {
+  const PokedexHomePage({super.key});
+
+  @override
+  State<PokedexHomePage> createState() => _PokedexHomePageState();
+}
+
+class _PokedexHomePageState extends State<PokedexHomePage> {
+  late Future<List<Pokemon>> futurePokemon;
+
+  @override
+  void initState() {
+    super.initState();
+    futurePokemon = fetchPokemon();
+  }
+
+  // Función para obtener los datos de la API de Render
+  Future<List<Pokemon>> fetchPokemon() async {
+    final response = await http.get(Uri.parse(apiUrl));
+
+    if (response.statusCode == 200) {
+      List jsonResponse = json.decode(utf8.decode(response.bodyBytes)); // Decodificación robusta
+      return jsonResponse.map((data) => Pokemon.fromJson(data)).toList();
+    } else {
+      throw Exception('Fallo al cargar la Pokédex. Código: ${response.statusCode}');
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
     return Scaffold(
       appBar: AppBar(
-        // TRY THIS: Try changing the color here to a specific color (to
-        // Colors.amber, perhaps?) and trigger a hot reload to see the AppBar
-        // change color while the other colors stay the same.
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
-        title: Text(widget.title),
+        title: const Text('Pokédex Kanto (RF/VH)'),
+        centerTitle: true,
+        // Aquí se añadirían filtros/botones de búsqueda en el futuro
       ),
-      body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
-        child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
-          //
-          // TRY THIS: Invoke "debug painting" (choose the "Toggle Debug Paint"
-          // action in the IDE, or press "p" in the console), to see the
-          // wireframe for each widget.
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            const Text('You have pushed the button this many times:'),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headlineMedium,
-            ),
-          ],
-        ),
+      body: FutureBuilder<List<Pokemon>>(
+        future: futurePokemon,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            // Muestra un indicador de carga mientras espera la respuesta
+            return const Center(child: CircularProgressIndicator(color: Color(0xFFCC0000)));
+          } else if (snapshot.hasError) {
+            // Muestra un mensaje de error si falla la conexión
+            return Center(child: Text('Error de conexión: ${snapshot.error}.'));
+          } else if (snapshot.hasData) {
+            // Muestra la cuadrícula de tarjetas
+            return GridView.builder(
+              padding: const EdgeInsets.all(8.0),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 3,
+                childAspectRatio: 0.58,
+                crossAxisSpacing: 8,
+                mainAxisSpacing: 8,
+              ),
+              itemCount: snapshot.data!.length,
+              itemBuilder: (context, index) {
+                final pokemon = snapshot.data![index];
+
+                return Card(
+                  color: Colors.grey[100],
+                  elevation: 4,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8.0),
+                    side: const BorderSide(color: Color(0xFFCC0000), width: 1.5),
+                  ),
+                  child: InkWell(
+                    onTap: () {
+                      // ACCIÓN RÁPIDA DE CAPTURA (Futura implementación)
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Clic en ${pokemon.name} - Próxima acción: Marcar Capturado')),
+                      );
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.all(0.5),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          // Número de Pokédex
+                          Text(
+                            '#${pokemon.id.toString().padLeft(3, '0')}',
+                            style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                          ),
+
+                          // Imagen del Pokémon
+                          Image.network(
+                            'https://assets.pokemon.com/assets/cms2/img/pokedex/detail/${pokemon.id.toString().padLeft(3, '0')}.png',
+                            height: 70,
+                            loadingBuilder: (context, child, loadingProgress) {
+                              if (loadingProgress == null) return child;
+                              return const SizedBox(height: 60, child: Center(child: CircularProgressIndicator(strokeWidth: 2, color: Colors.grey)));
+                            },
+                          ),
+
+                          const SizedBox(height: 5),
+
+                          // Nombre del Pokémon
+                          Text(
+                            pokemon.name,
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                            textAlign: TextAlign.center,
+                          ),
+
+                          // Tipos
+                          Padding(
+                            padding: const EdgeInsets.only(top: 4.0),
+                            child: Wrap( // <--- ¡AQUÍ ESTÁ EL CAMBIO CLAVE!
+                              alignment: WrapAlignment.center, // Centra los chips
+                              spacing: 4.0, // Espacio horizontal entre chips
+                              runSpacing: 4.0, // Espacio vertical entre líneas (si se envuelven)
+                              children: pokemon.type.map((type) => TypeChip(type: type)).toList(),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
+            );
+          }
+          return const Center(child: Text("Cargando..."));
+        },
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
-      ), // This trailing comma makes auto-formatting nicer for build methods.
     );
   }
 }
