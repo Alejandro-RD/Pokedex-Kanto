@@ -278,7 +278,7 @@ function loadPokedexState() {
 async function loadPokedexData() {
     try {
         // 1. CARGAR DATOS BASE DESDE EL BACKEND
-        const API_URL = 'https://pokedex-api-o6hc.onrender.com/api/pokemon';
+        const API_URL = 'https://pokedex-api-docker.onrender.com/api/pokemon';
         const response = await fetch(API_URL);
         
         if (!response.ok) {
