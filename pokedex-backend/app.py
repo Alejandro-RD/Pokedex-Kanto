@@ -167,14 +167,26 @@ POKEMON_DATA = [
 # 2. CONFIGURACIÓN E INICIALIZACIÓN DE LA APLICACIÓN
 # =======================================================
 app = Flask(__name__)
+# ----------------------------------------------------
+# ⚠️ ¡ATENCIÓN! La lista debe contener TUS dominios de Vercel
+# ----------------------------------------------------
+
+VERCEL_DOMAINS = [
+    # 1. Dominio de Producción (el dominio simple)
+    "https://pokedex-kanto-app.vercel.app", 
+    # 2. Dominio de Desarrollo/Ramas (el que aparece en tu error)
+    "https://pokedex-kanto-git-main-alejandro-rds-projects.vercel.app" 
+]
+
 CORS(app, resources={
     r"/api/*": {
-        "origins": ["https://pokedex-kanto-app.vercel.app"],
+        # Usamos la lista de dominios como orígenes permitidos
+        "origins": VERCEL_DOMAINS,
         "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
         "allow_headers": ["Content-Type", "Authorization"],
         "supports_credentials": True
     }
-}) 
+})
 
 # --- IMPORTANTE: USAMOS LA VARIABLE DE ENTORNO ---
 import os
