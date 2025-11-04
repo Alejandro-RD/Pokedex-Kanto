@@ -171,17 +171,10 @@ app = Flask(__name__)
 # ⚠️ ¡ATENCIÓN! La lista debe contener TUS dominios de Vercel
 # ----------------------------------------------------
 
-VERCEL_DOMAINS = [
-    # 1. Dominio de Producción (el dominio simple)
-    "https://pokedex-kanto-app.vercel.app", 
-    # 2. Dominio de Desarrollo/Ramas (el que aparece en tu error)
-    "https://pokedex-kanto-git-main-alejandro-rds-projects.vercel.app" 
-]
-
+# --- SOLUCIÓN TEMPORAL DE CORS: PERMITIR CUALQUIER ORIGEN ("*") ---
 CORS(app, resources={
     r"/api/*": {
-        # Usamos la lista de dominios como orígenes permitidos
-        "origins": VERCEL_DOMAINS,
+        "origins": ["*"], # <--- Acepta peticiones de CUALQUIER dominio
         "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
         "allow_headers": ["Content-Type", "Authorization"],
         "supports_credentials": True
