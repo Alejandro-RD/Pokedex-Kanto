@@ -185,7 +185,7 @@ VERCEL_DOMAINS = [
 ]
 CORS(app, resources={
     r"/api/*": {
-        "origins": VERCEL_DOMAINS,
+        "origins": ["*"],
         "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
         "allow_headers": ["Content-Type", "Authorization", "x-access-tokens"],
         "supports_credentials": True
