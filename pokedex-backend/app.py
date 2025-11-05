@@ -5,19 +5,19 @@ import os
 import jwt
 import datetime
 from functools import wraps
-# --- NUEVAS IMPORTACIONES PARA ENTORNO DE DESARROLLO LOCAL ---
-from dotenv import load_dotenv 
 
-# Nota: Para la verificación de Google OAuth, necesitarías instalar 'google-auth'
-# y 'google-auth-oauthlib' en tu entorno, pero lo haremos funcional primero.
+# Importaciones necesarias para la seguridad de Google Auth
+# from google.oauth2 import id_token
+# from google.auth.transport import requests as google_requests 
+from dotenv import load_dotenv
 
-# =======================================================
-# 1. CARGA DE VARIABLES DE ENTORNO
-# =======================================================
-# Carga las variables del archivo .env local si existe. 
-# En Render, esto no tiene efecto y se usan las variables de entorno de Render.
+# Cargar las variables de entorno del archivo .env local
 load_dotenv()
 
+# =======================================================
+# 1. DATOS ORIGINALES (POKÉDEX KANTO 1-151)
+# ⚠️ NOTA: ¡DEBES PEGAR AQUÍ EL ARRAY COMPLETO POKEMON_DATA!
+# =======================================================
 POKEMON_DATA = [
     {"id": 1, "name": "Bulbasaur", "type": ["Planta", "Veneno"], "exclusivo": "Ambos"},
     {"id": 2, "name": "Ivysaur", "type": ["Planta", "Veneno"], "exclusivo": "Ambos"},
@@ -178,31 +178,24 @@ POKEMON_DATA = [
 # =======================================================
 app = Flask(__name__)
 
-# --- CORRECCIÓN FINAL DE CORS (Permite Vercel) ---
-VERCEL_DOMAINS = [
-    "https://pokedex-kanto-app.vercel.app", 
-    "https://pokedex-kanto-git-main-alejandro-rds-projects.vercel.app" 
-]
-CORS(app)
+# --- CORRECCIÓN FINAL DE CORS: Inicialización Simple y Global ---
+# Esto permite que flask-cors maneje la petición OPTIONS automáticamente 
+# para cualquier origen, resolviendo el problema de preflight.
+CORS(app) 
 
-# --- CONFIGURACIÓN DE SEGURIDAD Y DB (USA OS.ENVIRON.GET PARA SOPORTAR .ENV Y RENDER) ---
+# --- CONFIGURACIÓN DE SEGURIDAD Y DB ---
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY')
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('SQLALCHEMY_DATABASE_URI') 
 
-# Si alguna clave vital no se encuentra, abortar (solo para depuración local)
-if not app.config['SECRET_KEY']:
-    print("FATAL: SECRET_KEY no encontrada. Revisa tu archivo .env o la configuración de Render.")
-
-if not app.config['SQLALCHEMY_DATABASE_URI']:
-    print("FATAL: SQLALCHEMY_DATABASE_URI no encontrada. Revisa tu .env o Render.")
-
+# Si alguna clave vital no se encuentra (solo para depuración local)
+if not app.config['SECRET_KEY'] or not app.config['SQLALCHEMY_DATABASE_URI']:
+    print("FATAL: Configuración de DB/SECRET_KEY no encontrada. Revisa tu archivo .env o la configuración de Render.")
 
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-
 db = SQLAlchemy(app)
 
 # =======================================================
-# 3. MODELOS DE DATOS (Estructura de Usuarios y Persistencia)
+# 3. MODELOS DE DATOS (Se mantienen igual)
 # =======================================================
 
 class ListToString(db.TypeDecorator):
@@ -212,14 +205,12 @@ class ListToString(db.TypeDecorator):
     def process_result_value(self, value, dialect):
         return value.split(',') if value is not None and isinstance(value, str) else []
 
-# --- NUEVO MODELO 1: USUARIO ---
 class User(db.Model):
     __tablename__ = 'users'
     id = db.Column(db.Integer, primary_key=True)
     google_id = db.Column(db.String(128), unique=True, nullable=False)
     captures = db.relationship('UserCapture', backref='user', lazy=True)
 
-# --- MODELO ORIGINAL RE-USADO: POKEMON KANTO (Solo metadata) ---
 class PokemonKanto(db.Model):
     __tablename__ = 'pokemon_kanto'
     id = db.Column(db.Integer, primary_key=True)
@@ -235,16 +226,12 @@ class PokemonKanto(db.Model):
             'exclusivo': self.exclusivo
         }
 
-# --- NUEVO MODELO 2: ESTADO DE CAPTURA POR USUARIO ---
 class UserCapture(db.Model):
     __tablename__ = 'user_captures'
     id = db.Column(db.Integer, primary_key=True)
-    
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     pokemon_id = db.Column(db.Integer, db.ForeignKey('pokemon_kanto.id'), nullable=False)
-    
     is_caught = db.Column(db.Boolean, default=False)
-    
     __table_args__ = (db.UniqueConstraint('user_id', 'pokemon_id', name='_user_pokemon_uc'),)
 
 # =======================================================
@@ -252,7 +239,6 @@ class UserCapture(db.Model):
 # =======================================================
 
 def generate_auth_token(user_id):
-    """Genera un Auth Token JWT interno para la aplicación (expira en 24h)."""
     expiration = datetime.datetime.utcnow() + datetime.timedelta(hours=24)
     token = jwt.encode({
         'user_id': user_id,
@@ -261,72 +247,53 @@ def generate_auth_token(user_id):
     return token 
 
 def token_required(f):
-    """Decorador que verifica el Auth Token JWT en el encabezado de la petición."""
     @wraps(f)
     def decorated(*args, **kwargs):
         token = None
-        # Busca el token en el encabezado 'Authorization' (Bearer) o 'x-access-tokens'
         if 'Authorization' in request.headers:
             try:
-                # Intenta el formato "Bearer <token>"
                 token = request.headers['Authorization'].split(" ")[1]
             except IndexError:
-                pass # Si no tiene formato Bearer, intentará buscar en x-access-tokens
+                pass 
         
         if not token and 'x-access-tokens' in request.headers:
             token = request.headers['x-access-tokens']
 
         if not token:
-            return jsonify({'message': 'Token de autenticación faltante o no válido.'}), 401
+            return jsonify({'message': 'Token de autenticación faltante.'}), 401
 
         try:
-            # Decodificar el token usando tu clave secreta
             data = jwt.decode(token, app.config['SECRET_KEY'], algorithms=["HS256"])
-            # Buscar al usuario basado en el ID codificado en el token
             current_user = User.query.filter_by(id=data['user_id']).first()
         except Exception as e:
             return jsonify({'message': 'Token no válido o expirado.'}), 401
 
-        # Pasar el objeto del usuario a la función de la ruta
         return f(current_user, *args, **kwargs)
 
     return decorated
 
 # =======================================================
-# 5. RUTAS API 
+# 5. RUTAS API (Con corrección de método en /api/login)
 # =======================================================
 
 @app.route('/api/status', methods=['GET'])
 def check_status():
     return jsonify({'status': 'ok', 'message': 'Backend de Pokédex activo.'})
 
-# pokedex-backend/app.py (Ruta de Login)
-
-@app.route('/api/login', methods=['POST', 'OPTIONS']) 
+# --- RUTA DE LOGIN (CORRECCIÓN: Solo acepta POST, dejando OPTIONS a Flask-CORS) ---
+@app.route('/api/login', methods=['POST']) 
 def login_user():
-    """
-    Ruta que recibirá el token de Google, verificará la identidad y devolverá
-    nuestro JWT interno para la sesión.
-    """
-    # 1. Manejo Explícito del Preflight de CORS
-    if request.method == 'OPTIONS':
-        # Simplemente devolvemos 200 OK. Flask-CORS añade las cabeceras necesarias.
-        return '', 200 
+    data = request.get_json()
+    id_token = data.get('token')
+    
+    if not id_token:
+        return jsonify({'message': 'ID Token de Google no proporcionado.'}), 400
+    
+    # ⚠️ Esto es TEMPORAL hasta implementar la verificación real del token de Google
+    google_id = "temp_google_id_from_" + id_token[:10] 
 
-    # 2. Lógica del POST
     try:
-        data = request.get_json()
-        id_token = data.get('token') # <--- La clave que tu frontend envía es 'token' (revisar)
-        
-        if not id_token:
-            return jsonify({'message': 'ID Token de Google no proporcionado.'}), 400
-
-        # En la versión real, aquí se verificaría el ID Token de Google.
-        # Por ahora, simularemos que ya tenemos el ID único del usuario:
-        # Extraemos una parte del token como ID temporal
-        google_id = "temp_google_id_from_" + id_token[:10] 
-        
-        # 1. Buscar o Crear Usuario (y devolver el JWT)
+        # 1. Buscar o Crear Usuario
         user = User.query.filter_by(google_id=google_id).first()
         if not user:
             user = User(google_id=google_id)
@@ -339,60 +306,39 @@ def login_user():
         return jsonify({
             'message': 'Login exitoso',
             'token': token,
-            'username': f'Entrenador #{user.id}' # Retornamos un nombre temporal
-        }), 200 # <-- Aseguramos el código 200 de éxito
+            'username': f'Entrenador #{user.id}'
+        }), 200 
 
     except Exception as e:
-        # Si algo falla en la lógica POST (ej: JSON mal formado)
-        print(f"ERROR DURANTE EL PROCESO DE LOGIN POST: {e}")
-        return jsonify({'message': 'Error interno del servidor durante el login.'}), 500
+        db.session.rollback()
+        return jsonify({'message': f'Error interno en el login: {str(e)}'}), 500
 
-# --- RUTA PRINCIPAL (DEBE DEVOLVER DATOS SEGÚN EL USUARIO - FUTURO CAMBIO) ---
+
+# --- RUTA PRINCIPAL (PROTEGIDA) ---
 @app.route('/api/pokemon', methods=['GET'])
-@token_required # <--- Ahora esta ruta DEBE ser protegida
+@token_required 
 def get_all_pokemon(current_user):
-    """
-    Devuelve la lista completa de Pokémon (metadata) MÁS el estado de captura 
-    para el usuario logueado.
-    """
+    # Lógica para devolver la lista de Pokémon y el estado de captura del usuario actual
     try:
-        # 1. Obtener toda la metadata de Pokémon
         pokemon_list = db.session.execute(db.select(PokemonKanto).order_by(PokemonKanto.id)).scalars().all()
         
-        # 2. Obtener los estados de captura del usuario actual
         captures = UserCapture.query.filter_by(user_id=current_user.id).all()
-        # Crear un mapa {pokemon_id: is_caught} para búsqueda rápida
         capture_map = {c.pokemon_id: c.is_caught for c in captures}
 
         result = []
         for p in pokemon_list:
             pokemon_dict = p.to_dict()
-            # Añadir el estado de captura (True/False) o False por defecto si no hay registro
             pokemon_dict['is_caught'] = capture_map.get(p.id, False) 
             result.append(pokemon_dict)
             
-        return jsonify(result)
+        return jsonify(result), 200
     except Exception as e:
         return jsonify({'error': f'Error al consultar DB: {str(e)}'}), 500
 
-# --- RUTA DE PRUEBA SEGURA (SOLO FUNCIONARÁ CON UN TOKEN VÁLIDO) ---
-@app.route('/api/secure-test', methods=['GET'])
-@token_required 
-def secure_test_route(current_user):
-    return jsonify({
-        'message': f'Acceso concedido a Usuario ID: {current_user.id}',
-        'google_id': current_user.google_id
-    })
-
-# =======================================================
-# 6. RUTA TEMPORAL PARA INICIALIZACIÓN DE LA BASE DE DATOS REMOTA
-# =======================================================
-
+# --- RUTA TEMPORAL PARA INICIALIZACIÓN ---
 @app.route('/api/initialize-db', methods=['POST'])
 def initialize_database():
-    """
-    Ruta para crear TODAS las tablas y poblar la tabla PokemonKanto.
-    """
+    """Ruta para crear TODAS las tablas y poblar la tabla PokemonKanto."""
     with app.app_context():
         try:
             db.create_all()
@@ -402,16 +348,13 @@ def initialize_database():
             else:
                 for data in POKEMON_DATA:
                     new_pokemon = PokemonKanto(
-                        id=data['id'],
-                        name=data['name'],
-                        type=data['type'],
-                        exclusivo=data['exclusivo']
+                        id=data['id'], name=data['name'], type=data['type'], exclusivo=data['exclusivo']
                     )
                     db.session.add(new_pokemon)
                 db.session.commit()
                 message = "✅ Base de datos inicializada y poblada con 151 Pokémon."
             
-            return jsonify({'status': 'success', 'message': message})
+            return jsonify({'status': 'success', 'message': message}), 200
 
         except Exception as e:
             db.session.rollback()
@@ -422,6 +365,5 @@ def initialize_database():
 # =======================================================
 
 if __name__ == '__main__':
-    # Usar el puerto 8080 si está definido en el entorno (Render) o 5000 por defecto
     port = int(os.environ.get('PORT', 5000)) 
     app.run(debug=True, port=port)
