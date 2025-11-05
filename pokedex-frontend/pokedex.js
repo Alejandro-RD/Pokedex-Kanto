@@ -118,23 +118,28 @@ async function cargarDatosDelUsuario() {
  */
 function generarTarjeta(pokemon) {
     const capturado = pokemon.is_caught || false; 
-    const claseCapturado = capturado ? 'bg-success' : 'bg-light';
+    const claseCapturado = capturado ? 'bg-success' : 'bg-light'; // Clases de Bootstrap
     const opacidadImagen = capturado ? 1 : 0.4;
     
+    // El backend devuelve 'name' y 'id'
+    const pokemonName = pokemon.name;
+    const pokemonId = pokemon.id;
+
     return `
         <div class="col pokemon-card" 
-             data-id="${pokemon.id}" 
-             data-name="${pokemon.name.toLowerCase()}" 
-             onclick="mostrarDetalles(${pokemon.id})">
+             data-id="${pokemonId}" 
+             data-name="${pokemonName.toLowerCase()}" 
+             onclick="mostrarDetalles(${pokemonId})">
             <div class="card h-100 ${claseCapturado} text-center" style="cursor: pointer;">
                 <div class="card-body">
-                    <img src="https://assets.pokemon.com/assets/cms2/img/pokedex/detail/${String(pokemon.id).padStart(3, '0')}.png" 
+                    <img src="https://assets.pokemon.com/assets/cms2/img/pokedex/detail/${String(pokemonId).padStart(3, '0')}.png" 
                          class="card-img-top mx-auto d-block" 
-                         alt="${pokemon.name}" 
+                         alt="${pokemonName}" 
                          style="width: 96px; height: 96px; opacity: ${opacidadImagen};">
-                    <h6 class="card-title mt-2 mb-0">#${String(pokemon.id).padStart(3, '0')}</h6>
-                    <p class="card-text fw-bold text-dark">${pokemon.name}</p>
-                </div>
+                    <h6 class="card-title mt-2 mb-0">#${String(pokemonId).padStart(3, '0')}</h6>
+                    <p class="card-text fw-bold text-dark">${pokemonName}</p>
+                    
+                    </div>
                 ${capturado ? '<span class="badge bg-success position-absolute top-0 start-0 m-1">✔️</span>' : ''}
             </div>
         </div>
