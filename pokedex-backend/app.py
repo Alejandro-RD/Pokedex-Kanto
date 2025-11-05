@@ -183,14 +183,7 @@ VERCEL_DOMAINS = [
     "https://pokedex-kanto-app.vercel.app", 
     "https://pokedex-kanto-git-main-alejandro-rds-projects.vercel.app" 
 ]
-CORS(app, resources={
-    r"/api/*": {
-        "origins": ["*"], 
-        "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-        "allow_headers": ["Content-Type", "Authorization", "x-access-tokens"],
-        "supports_credentials": True
-    }
-})
+CORS(app)
 
 # --- CONFIGURACIÓN DE SEGURIDAD Y DB (USA OS.ENVIRON.GET PARA SOPORTAR .ENV Y RENDER) ---
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY')
