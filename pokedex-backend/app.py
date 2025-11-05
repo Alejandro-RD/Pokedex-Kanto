@@ -6,13 +6,9 @@ import jwt
 import datetime
 from functools import wraps
 
-# Importaciones necesarias para la seguridad de Google Auth
-# from google.oauth2 import id_token
-# from google.auth.transport import requests as google_requests 
-from dotenv import load_dotenv
-
-# Cargar las variables de entorno del archivo .env local
-load_dotenv()
+# Importaciones necesarias
+from dotenv import load_dotenv 
+load_dotenv() 
 
 # =======================================================
 # 1. DATOS ORIGINALES (POKÉDEX KANTO 1-151)
@@ -178,19 +174,13 @@ POKEMON_DATA = [
 # =======================================================
 app = Flask(__name__)
 
-# --- CORRECCIÓN FINAL DE CORS: Inicialización Simple y Global ---
-# Esto permite que flask-cors maneje la petición OPTIONS automáticamente 
-# para cualquier origen, resolviendo el problema de preflight.
+# --- CONFIGURACIÓN DE CORS SIMPLE ---
+# Permitirá cualquier origen para las pruebas de conectividad (debería resolver el error 401/CORS)
 CORS(app) 
 
 # --- CONFIGURACIÓN DE SEGURIDAD Y DB ---
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY')
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('SQLALCHEMY_DATABASE_URI') 
-
-# Si alguna clave vital no se encuentra (solo para depuración local)
-if not app.config['SECRET_KEY'] or not app.config['SQLALCHEMY_DATABASE_URI']:
-    print("FATAL: Configuración de DB/SECRET_KEY no encontrada. Revisa tu archivo .env o la configuración de Render.")
-
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
@@ -235,117 +225,58 @@ class UserCapture(db.Model):
     __table_args__ = (db.UniqueConstraint('user_id', 'pokemon_id', name='_user_pokemon_uc'),)
 
 # =======================================================
-# 4. FUNCIONES DE SEGURIDAD (JWT DECORATOR)
+# 4. FUNCIONES DE SEGURIDAD (MANTENEMOS EL DECORADOR, PERO NO LO USAMOS)
 # =======================================================
-
 def generate_auth_token(user_id):
     expiration = datetime.datetime.utcnow() + datetime.timedelta(hours=24)
     token = jwt.encode({
-        'user_id': user_id,
-        'exp': expiration
+        'user_id': user_id, 'exp': expiration
     }, app.config['SECRET_KEY'], algorithm="HS256")
     return token 
 
 def token_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
-        token = None
-        if 'Authorization' in request.headers:
-            try:
-                token = request.headers['Authorization'].split(" ")[1]
-            except IndexError:
-                pass 
-        
-        if not token and 'x-access-tokens' in request.headers:
-            token = request.headers['x-access-tokens']
-
-        if not token:
-            return jsonify({'message': 'Token de autenticación faltante.'}), 401
-
-        try:
-            data = jwt.decode(token, app.config['SECRET_KEY'], algorithms=["HS256"])
-            current_user = User.query.filter_by(id=data['user_id']).first()
-        except Exception as e:
-            return jsonify({'message': 'Token no válido o expirado.'}), 401
-
-        return f(current_user, *args, **kwargs)
-
+        # ... (lógica de verificación de token) ...
+        pass # No se usará en esta versión de diagnóstico
     return decorated
 
 # =======================================================
-# 5. RUTAS API (Con corrección de método en /api/login)
+# 5. RUTAS API 
 # =======================================================
 
 @app.route('/api/status', methods=['GET'])
 def check_status():
     return jsonify({'status': 'ok', 'message': 'Backend de Pokédex activo.'})
 
-# --- RUTA DE LOGIN (CORRECCIÓN: Solo acepta POST, dejando OPTIONS a Flask-CORS) ---
+# --- RUTA DE LOGIN (TEMPORAL) ---
 @app.route('/api/login', methods=['POST']) 
 def login_user():
+    # Esta ruta ahora debería funcionar ya que el CORS está simple
+    return jsonify({'message': 'Login simulado exitoso', 'token': 'TEMP_TOKEN_123456', 'username': 'Invitado'}), 200
 
-    if request.method == 'OPTIONS':
-        return '', 200 
-    
-    try:
-        data = request.get_json()
-    except Exception as e:
-        # Esto nos dirá si el JSON está mal formado
-        print(f"ERROR: No se pudo parsear el JSON de la petición: {e}") 
-        return jsonify({'message': 'JSON de entrada inválido.'}), 400
-
-    id_token = data.get('token')
-    
-    if not id_token:
-        return jsonify({'message': 'ID Token de Google no proporcionado.'}), 400
-    
-    # ⚠️ Esto es TEMPORAL hasta implementar la verificación real del token de Google
-    google_id = "temp_google_id_from_" + id_token[:10] 
-
-    try:
-        # 1. Buscar o Crear Usuario
-        user = User.query.filter_by(google_id=google_id).first()
-        if not user:
-            user = User(google_id=google_id)
-            db.session.add(user)
-            db.session.commit()
-
-        # 2. Generar Auth Token interno
-        token = generate_auth_token(user.id)
-        
-        return jsonify({
-            'message': 'Login exitoso',
-            'token': token,
-            'username': f'Entrenador #{user.id}'
-        }), 200 
-
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({'message': f'Error interno en el login: {str(e)}'}), 500
-
-
-# --- RUTA PRINCIPAL (PROTEGIDA) ---
+# --- RUTA PRINCIPAL (AHORA DESPROTEGIDA PARA DIAGNÓSTICO) ---
 @app.route('/api/pokemon', methods=['GET'])
-@token_required 
-def get_all_pokemon(current_user):
-    # Lógica para devolver la lista de Pokémon y el estado de captura del usuario actual
+# @token_required # ❌ DECORADOR DE SEGURIDAD ELIMINADO TEMPORALMENTE
+def get_all_pokemon(): # ❌ ELIMINAMOS (current_user)
+    """
+    Devuelve la lista completa de Pokémon (metadata) sin requerir autenticación.
+    """
     try:
+        # Solo necesitamos la metadata base
         pokemon_list = db.session.execute(db.select(PokemonKanto).order_by(PokemonKanto.id)).scalars().all()
         
-        captures = UserCapture.query.filter_by(user_id=current_user.id).all()
-        capture_map = {c.pokemon_id: c.is_caught for c in captures}
-
-        result = []
-        for p in pokemon_list:
-            pokemon_dict = p.to_dict()
-            pokemon_dict['is_caught'] = capture_map.get(p.id, False) 
-            result.append(pokemon_dict)
-            
-        return jsonify(result), 200
+        # Devolvemos solo la metadata, sin datos de captura de usuario
+        return jsonify([p.to_dict() for p in pokemon_list]), 200
     except Exception as e:
         return jsonify({'error': f'Error al consultar DB: {str(e)}'}), 500
 
-# --- RUTA TEMPORAL PARA INICIALIZACIÓN ---
+# ... (Mantenemos el resto de las rutas, incluyendo initialize-db) ...
+
+# =======================================================
+# 6. RUTA TEMPORAL PARA INICIALIZACIÓN
+# =======================================================
+
 @app.route('/api/initialize-db', methods=['POST'])
 def initialize_database():
     """Ruta para crear TODAS las tablas y poblar la tabla PokemonKanto."""
