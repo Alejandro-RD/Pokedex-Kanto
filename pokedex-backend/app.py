@@ -283,7 +283,17 @@ def check_status():
 # --- RUTA DE LOGIN (CORRECCIÓN: Solo acepta POST, dejando OPTIONS a Flask-CORS) ---
 @app.route('/api/login', methods=['POST']) 
 def login_user():
-    data = request.get_json()
+
+    if request.method == 'OPTIONS':
+        return '', 200 
+    
+    try:
+        data = request.get_json()
+    except Exception as e:
+        # Esto nos dirá si el JSON está mal formado
+        print(f"ERROR: No se pudo parsear el JSON de la petición: {e}") 
+        return jsonify({'message': 'JSON de entrada inválido.'}), 400
+
     id_token = data.get('token')
     
     if not id_token:
