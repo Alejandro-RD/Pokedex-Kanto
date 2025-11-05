@@ -5,15 +5,12 @@
 // 1. CONFIGURACIÓN Y VARIABLES GLOBALES
 // ===============================================
 
-// Almacena el token JWT una vez que el usuario inicia sesión.
 let AUTH_TOKEN = localStorage.getItem('userToken') || null;
-
-// Lista maestra de Pokémon, cargada desde la API
 let listaPokemon = [];
 let filtroActual = 'todos';
 
 // 🚨 ¡IMPORTANTE! REEMPLAZAR con la URL de tu backend en Render
-const BACKEND_URL = "https://pokedex-api-docker.onrender.com"; 
+const BACKEND_URL = "https://pokedex-api-docker.onrender.com"; // EJEMPLO: Usar tu URL real
 
 // ===============================================
 // 2. LÓGICA DE AUTENTICACIÓN DE GOOGLE
@@ -37,14 +34,10 @@ async function handleCredentialResponse(response) {
         if (res.ok) {
             const data = await res.json();
             
-            // 1. Guardar el nuevo token JWT del backend
             AUTH_TOKEN = data.token;
             localStorage.setItem('userToken', AUTH_TOKEN);
 
-            // 2. Actualizar la UI (asumiendo que el backend retorna 'username')
             actualizarUI_LoginExitoso(data.username); 
-            
-            // 3. Recargar los datos (Ahora con el token en el header, si el backend está protegido)
             await cargarDatosDelUsuario(); 
             
             alert('¡Inicio de sesión exitoso! Tu progreso ha sido cargado.');
@@ -70,11 +63,10 @@ function actualizarUI_LoginExitoso(username) {
 }
 
 // ===============================================
-// 3. CARGA DE DATOS INICIALES (AHORA ACCESO PÚBLICO)
-// ===============================================
+// 3. CARGA DE DATOS INICIALES (ACCESO PÚBLICO para diagnóstico)
+// =================================================================
 
 document.addEventListener('DOMContentLoaded', () => {
-    // La carga inicial ahora es directa, sin esperar el login.
     cargarDatosDelUsuario(); 
 });
 
@@ -84,16 +76,13 @@ document.addEventListener('DOMContentLoaded', () => {
 async function cargarDatosDelUsuario() {
     mostrarSpinner(true);
     
-    // Configura los headers. Aunque la ruta es pública, enviamos el token si existe.
-    const headers = {
-        'Content-Type': 'application/json',
-    };
+    // Configura los headers. No enviamos token en la carga inicial ya que es pública.
+    const headers = { 'Content-Type': 'application/json' };
     if (AUTH_TOKEN) {
         headers['Authorization'] = `Bearer ${AUTH_TOKEN}`;
     }
 
     try {
-        // Llama a la ruta /api/pokemon que ahora es de acceso PÚBLICO
         const response = await fetch(`${BACKEND_URL}/api/pokemon`, { headers: headers });
         if (!response.ok) {
             throw new Error(`Error al cargar la Pokédex. Código: ${response.status}`);
@@ -101,15 +90,11 @@ async function cargarDatosDelUsuario() {
         
         const data = await response.json();
         
-        // ⚠️ CORRECCIÓN DE TYPERROR: data ahora debe ser la lista que se puede mapear
+        // Asumimos que el backend devuelve un array directo
         listaPokemon = data; 
         
-        // Asumiendo que el backend devuelve un array directo
         if (!Array.isArray(listaPokemon)) {
-             // Esto sucede si el backend devuelve un objeto que no es la lista.
-             // Si el backend devuelve {pokemon: [...]}, necesitas: listaPokemon = data.pokemon
-             // Por ahora, asumimos que devuelve el array directo.
-             console.error("El backend no devolvió un array de Pokémon.");
+             console.error("Error de datos: El backend no devolvió un array de Pokémon.", data);
              listaPokemon = []; 
         }
 
@@ -124,7 +109,6 @@ async function cargarDatosDelUsuario() {
     }
 }
 
-
 // ===============================================
 // 4. RENDERING Y VISUALIZACIÓN DE LA POKÉDEX
 // ===============================================
@@ -133,7 +117,6 @@ async function cargarDatosDelUsuario() {
  * Genera el HTML para cada tarjeta de Pokémon.
  */
 function generarTarjeta(pokemon) {
-    // Usamos 'name' y 'id' que viene directo del backend
     const capturado = pokemon.is_caught || false; 
     const claseCapturado = capturado ? 'bg-success' : 'bg-light';
     const opacidadImagen = capturado ? 1 : 0.4;
@@ -163,7 +146,6 @@ function generarTarjeta(pokemon) {
  */
 function renderizarListaPokemon(data) {
     const listaDiv = document.getElementById('lista-pokemon');
-    // ⚠️ CORRECCIÓN DE TYPERROR: Ahora comprobamos si es un array antes de mapear
     if (!Array.isArray(data)) {
         console.error("Error de Renderizado: La lista de Pokémon no es un array.", data);
         listaDiv.innerHTML = '<p class="text-danger text-center">Error interno: Estructura de datos incorrecta.</p>';
@@ -172,8 +154,133 @@ function renderizarListaPokemon(data) {
     listaDiv.innerHTML = data.map(generarTarjeta).join('');
 }
 
-// ... (El resto de las funciones como mostrarDetalles, toggleCapturado, etc. siguen aquí) ...
+// ===============================================
+// 5. MANEJO DE EVENTOS (Filtro, Búsqueda, Modal)
+// ===============================================
 
+// ... (Las funciones buscarPokemon, aplicarFiltro, y mostrarDetalles siguen aquí) ...
+
+/**
+ * Busca Pokémon por nombre o ID en la lista.
+ */
+function buscarPokemon() {
+    const query = document.getElementById('input-busqueda').value.toLowerCase();
+    const resultados = listaPokemon.filter(pokemon => 
+        pokemon.name.toLowerCase().includes(query) || String(pokemon.id).includes(query)
+    );
+    renderizarListaPokemon(resultados);
+}
+
+/**
+ * Aplica un filtro de versión a los sprites mostrados.
+ */
+function aplicarFiltro(filtro, texto) {
+    filtroActual = filtro;
+    document.getElementById('dropdownFiltro').textContent = texto;
+    // La lógica del filtro de versión se aplicaría aquí si el backend devolviera sprites separados
+    renderizarListaPokemon(listaPokemon);
+}
+
+/**
+ * Muestra los detalles de un Pokémon en el Modal.
+ */
+function mostrarDetalles(id) {
+    const pokemon = listaPokemon.find(p => p.id === id);
+    if (!pokemon) return;
+
+    // Llenado de modal (Simplificado)
+    const modalTitle = document.getElementById('pokemonModalLabel');
+    modalTitle.textContent = `#${String(pokemon.id).padStart(3, '0')} - ${pokemon.name}`;
+    
+    // ... (El resto de la lógica de llenado de modal) ...
+
+    const modal = new bootstrap.Modal(document.getElementById('pokemonModal'));
+    modal.show();
+}
+
+// ===============================================
+// 6. MANEJO DE ESTADO (CAPTURA Y PROGRESO)
+// ===============================================
+
+/**
+ * Alterna el estado de captura de un Pokémon y sincroniza con el backend.
+ * @param {number} id - ID del Pokémon a modificar.
+ * @param {boolean} nuevoEstado - true si está capturado, false si no.
+ */
+async function toggleCapturado(id, nuevoEstado) {
+    if (!AUTH_TOKEN) {
+        alert("Debes iniciar sesión con Google para guardar tu progreso.");
+        return; 
+    }
+
+    try {
+        const response = await fetch(`${BACKEND_URL}/api/captura`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${AUTH_TOKEN}`
+            },
+            body: JSON.stringify({ pokemon_id: id, capturado: nuevoEstado })
+        });
+
+        if (response.ok) {
+            // 1. Actualizar el estado local
+            const index = listaPokemon.findIndex(p => p.id === id);
+            if (index !== -1) {
+                listaPokemon[index].is_caught = nuevoEstado;
+            }
+
+            // 2. Re-renderizar la lista y barra
+            renderizarListaPokemon(listaPokemon);
+            actualizarProgresoGlobal(listaPokemon);
+            
+            // 3. Cerrar el modal (si está abierto)
+            const modalElement = document.getElementById('pokemonModal');
+            const modal = bootstrap.Modal.getInstance(modalElement);
+            if (modal) modal.hide();
+
+        } else {
+            alert("Error al guardar el progreso en el servidor.");
+        }
+    } catch (error) {
+        console.error("Error al sincronizar captura:", error);
+        alert("Error de conexión al guardar el progreso.");
+    }
+}
+
+/**
+ * Actualiza la barra de progreso y el contador global.
+ */
+function actualizarProgresoGlobal(data) {
+    const total = 151;
+    const capturados = data.filter(p => p.is_caught).length;
+    const porcentaje = Math.round((capturados / total) * 100);
+
+    const barra = document.getElementById('progreso-total');
+    const contador = document.getElementById('contador-pokedex');
+
+    // Actualiza la barra de progreso
+    barra.style.width = `${Math.max(porcentaje, 1)}%`; // Corrección del borde cuadrado
+    barra.setAttribute('aria-valuenow', capturados);
+    barra.setAttribute('data-progreso', `${capturados}/${total} (${porcentaje}%)`);
+
+    // Actualiza el contador
+    contador.textContent = `${capturados}/${total} Vistos`;
+    
+    // Lógica de Tonos de Color (Morado Dinámico)
+    const barraClases = ['progress-tone-1', 'progress-tone-2', 'progress-tone-3', 'progress-tone-4'];
+    barra.classList.remove(...barraClases);
+
+    if (porcentaje >= 75) {
+        barra.classList.add('progress-tone-4');
+    } else if (porcentaje >= 50) {
+        barra.classList.add('progress-tone-3');
+    } else if (porcentaje >= 25) {
+        barra.classList.add('progress-tone-2');
+    } else if (porcentaje > 0) {
+        barra.classList.add('progress-tone-1');
+    }
+}
 
 // ===============================================
 // 7. UTILIDADES
@@ -181,7 +288,6 @@ function renderizarListaPokemon(data) {
 
 /**
  * Muestra u oculta el spinner de carga. (Añadido para resolver ReferenceError)
- * @param {boolean} mostrar - true para mostrar, false para ocultar.
  */
 function mostrarSpinner(mostrar) {
     const spinner = document.getElementById('loading-spinner');
