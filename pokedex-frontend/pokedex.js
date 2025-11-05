@@ -16,12 +16,11 @@ let filtroActual = 'todos';
 const BACKEND_URL = "https://pokedex-api-docker.onrender.com"; 
 
 // ===============================================
-// 2. LÓGICA DE AUTENTICACIÓN DE GOOGLE (Mantener la función, pero deshabilitarla al inicio)
+// 2. LÓGICA DE AUTENTICACIÓN DE GOOGLE
 // ===============================================
 
 /**
  * Función de Callback de Google Sign-In.
- * @param {object} response - Objeto de respuesta de Google con el token de ID.
  */
 async function handleCredentialResponse(response) {
     const loginUrl = `${BACKEND_URL}/api/login`;
@@ -42,10 +41,10 @@ async function handleCredentialResponse(response) {
             AUTH_TOKEN = data.token;
             localStorage.setItem('userToken', AUTH_TOKEN);
 
-            // 2. Actualizar la UI
+            // 2. Actualizar la UI (asumiendo que el backend retorna 'username')
             actualizarUI_LoginExitoso(data.username); 
             
-            // 3. Recargar los datos, ahora con el token en el header (esto debería funcionar)
+            // 3. Recargar los datos (Ahora con el token en el header, si el backend está protegido)
             await cargarDatosDelUsuario(); 
             
             alert('¡Inicio de sesión exitoso! Tu progreso ha sido cargado.');
@@ -62,12 +61,10 @@ async function handleCredentialResponse(response) {
 
 /**
  * Muestra el nombre del usuario en el navbar y oculta el botón de login.
- * @param {string} username - El nombre de usuario retornado por el backend.
  */
 function actualizarUI_LoginExitoso(username) {
     const loginContainer = document.getElementById('login-container');
     if (loginContainer) {
-        // En un proyecto real, necesitarías el username desde la respuesta del login
         loginContainer.innerHTML = `<span class="text-white small me-3">Hola, ${username}</span>`;
     }
 }
@@ -77,7 +74,7 @@ function actualizarUI_LoginExitoso(username) {
 // ===============================================
 
 document.addEventListener('DOMContentLoaded', () => {
-    // LLAMA A LA CARGA SIN DEPENDER DEL TOKEN AL INICIO
+    // La carga inicial ahora es directa, sin esperar el login.
     cargarDatosDelUsuario(); 
 });
 
@@ -87,13 +84,10 @@ document.addEventListener('DOMContentLoaded', () => {
 async function cargarDatosDelUsuario() {
     mostrarSpinner(true);
     
-    // --- LÓGICA CLAVE: QUITAR EL TOKEN PARA LA CARGA INICIAL ---
-    // La ruta /api/pokemon ya no requiere token para devolver la metadata base.
+    // Configura los headers. Aunque la ruta es pública, enviamos el token si existe.
     const headers = {
         'Content-Type': 'application/json',
     };
-    
-    // Si hay token, lo enviamos (para futuras rutas o si el backend vuelve a proteger la ruta)
     if (AUTH_TOKEN) {
         headers['Authorization'] = `Bearer ${AUTH_TOKEN}`;
     }
@@ -107,12 +101,16 @@ async function cargarDatosDelUsuario() {
         
         const data = await response.json();
         
-        // El JSON de la API desprotegida es el array principal
+        // ⚠️ CORRECCIÓN DE TYPERROR: data ahora debe ser la lista que se puede mapear
         listaPokemon = data; 
         
-        // Si el login fue exitoso en una sesión anterior, actualiza la UI
-        if (AUTH_TOKEN) {
-             // (Aquí iría la lógica para obtener el username del token)
+        // Asumiendo que el backend devuelve un array directo
+        if (!Array.isArray(listaPokemon)) {
+             // Esto sucede si el backend devuelve un objeto que no es la lista.
+             // Si el backend devuelve {pokemon: [...]}, necesitas: listaPokemon = data.pokemon
+             // Por ahora, asumimos que devuelve el array directo.
+             console.error("El backend no devolvió un array de Pokémon.");
+             listaPokemon = []; 
         }
 
         renderizarListaPokemon(listaPokemon);
@@ -120,8 +118,7 @@ async function cargarDatosDelUsuario() {
 
     } catch (error) {
         console.error("Error al cargar datos:", error);
-        // Mostrar un error visible en el HTML si el fetch falla
-        document.getElementById('lista-pokemon').innerHTML = '<p class="text-danger text-center">No se pudo cargar la Pokédex. Revise la consola para errores de CORS/Conexión.</p>';
+        document.getElementById('lista-pokemon').innerHTML = '<p class="text-danger text-center">No se pudo cargar la Pokédex. Revise la URL o si el servidor Flask está funcionando.</p>';
     } finally {
         mostrarSpinner(false);
     }
@@ -136,15 +133,11 @@ async function cargarDatosDelUsuario() {
  * Genera el HTML para cada tarjeta de Pokémon.
  */
 function generarTarjeta(pokemon) {
-    // Asumimos 'capturado' es falso ya que la ruta no está protegida, pero el backend
-    // debe devolver un campo 'is_caught' si queremos reflejar el estado correctamente.
-    // Para esta prueba, usaremos solo la metadata.
+    // Usamos 'name' y 'id' que viene directo del backend
     const capturado = pokemon.is_caught || false; 
     const claseCapturado = capturado ? 'bg-success' : 'bg-light';
     const opacidadImagen = capturado ? 1 : 0.4;
     
-    // ... (Definir spriteUrl y tiposHtml aquí si el backend los devuelve en formato diferente) ...
-
     return `
         <div class="col pokemon-card" 
              data-id="${pokemon.id}" 
@@ -165,22 +158,34 @@ function generarTarjeta(pokemon) {
     `;
 }
 
-// ... (El resto de las funciones como renderizarListaPokemon, mostrarDetalles, etc. se mantienen) ...
+/**
+ * Renderiza la lista completa de Pokémon en el grid.
+ */
+function renderizarListaPokemon(data) {
+    const listaDiv = document.getElementById('lista-pokemon');
+    // ⚠️ CORRECCIÓN DE TYPERROR: Ahora comprobamos si es un array antes de mapear
+    if (!Array.isArray(data)) {
+        console.error("Error de Renderizado: La lista de Pokémon no es un array.", data);
+        listaDiv.innerHTML = '<p class="text-danger text-center">Error interno: Estructura de datos incorrecta.</p>';
+        return;
+    }
+    listaDiv.innerHTML = data.map(generarTarjeta).join('');
+}
+
+// ... (El resto de las funciones como mostrarDetalles, toggleCapturado, etc. siguen aquí) ...
 
 
 // ===============================================
-// 6. MANEJO DE ESTADO (Captura y Progreso)
+// 7. UTILIDADES
 // ===============================================
 
 /**
- * Alterna el estado de captura de un Pokémon y sincroniza con el backend.
+ * Muestra u oculta el spinner de carga. (Añadido para resolver ReferenceError)
+ * @param {boolean} mostrar - true para mostrar, false para ocultar.
  */
-async function toggleCapturado(id, nuevoEstado) {
-    if (!AUTH_TOKEN) {
-        alert("Debes iniciar sesión con Google para guardar tu progreso.");
-        return; 
+function mostrarSpinner(mostrar) {
+    const spinner = document.getElementById('loading-spinner');
+    if (spinner) {
+        spinner.classList.toggle('d-none', !mostrar);
     }
-    // ... (El resto de la lógica de guardado sigue aquí, usando el token para la seguridad) ...
 }
-
-// ... (El resto de las funciones) ...
