@@ -9,17 +9,34 @@
           integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" 
           crossorigin="anonymous">
 
-    <link rel="icon" href="pokeball_icon_211225.ico" type="image/x-icon">
     <link href="styles.css" rel="stylesheet">
     
     <title>Pokédex Kanto (RF/VH)</title>
+    
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
     
     <nav class="navbar navbar-dark bg-danger sticky-top">
         <div class="container-fluid container">
             <span class="navbar-brand mb-0 h1 fs-4">Pokédex Kanto (RF/VH)</span>
+            
             <div class="d-flex align-items-center text-white">
+                
+                <div id="login-container" class="me-3">
+                    <div id="g_id_onload"
+                        data-client_id="981808476903-3vtarp1p8jpvimd9ckl6tpd3dpufk2os.apps.googleusercontent.com" 
+                        data-context="signin"
+                        data-ux_mode="popup"
+                        data-callback="handleCredentialResponse"
+                        data-auto_prompt="false">
+                    </div>
+                    <div class="g_id_signin"
+                        data-type="icon"
+                        data-size="large"
+                        data-shape="circle">
+                    </div>
+                </div>
                 <span id="contador-pokedex" class="me-3 fs-6">0/151 Vistos</span>
                 
                 <div class="dropdown">

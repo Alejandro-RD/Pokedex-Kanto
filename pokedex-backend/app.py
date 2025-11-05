@@ -5,14 +5,18 @@ import os
 import jwt
 import datetime
 from functools import wraps
+# --- NUEVAS IMPORTACIONES PARA ENTORNO DE DESARROLLO LOCAL ---
+from dotenv import load_dotenv 
 
 # Nota: Para la verificación de Google OAuth, necesitarías instalar 'google-auth'
 # y 'google-auth-oauthlib' en tu entorno, pero lo haremos funcional primero.
 
 # =======================================================
-# 1. DATOS ORIGINALES (POKÉDEX KANTO 1-151)
-# Se mantienen para la inicialización (ruta /api/initialize-db)
+# 1. CARGA DE VARIABLES DE ENTORNO
 # =======================================================
+# Carga las variables del archivo .env local si existe. 
+# En Render, esto no tiene efecto y se usan las variables de entorno de Render.
+load_dotenv()
 
 POKEMON_DATA = [
     {"id": 1, "name": "Bulbasaur", "type": ["Planta", "Veneno"], "exclusivo": "Ambos"},
@@ -183,17 +187,23 @@ CORS(app, resources={
     r"/api/*": {
         "origins": VERCEL_DOMAINS,
         "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-        "allow_headers": ["Content-Type", "Authorization"],
+        "allow_headers": ["Content-Type", "Authorization", "x-access-tokens"],
         "supports_credentials": True
     }
 }) 
 
-# --- CONFIGURACIÓN DE SEGURIDAD Y DB ---
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'tu_clave_super_secreta_local')
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get(
-    'SQLALCHEMY_DATABASE_URI', 
-    'postgresql://[TU_USUARIO]:[TU_CLAVE]@localhost:5432/pokedex_db' 
-)
+# --- CONFIGURACIÓN DE SEGURIDAD Y DB (USA OS.ENVIRON.GET PARA SOPORTAR .ENV Y RENDER) ---
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY')
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('SQLALCHEMY_DATABASE_URI') 
+
+# Si alguna clave vital no se encuentra, abortar (solo para depuración local)
+if not app.config['SECRET_KEY']:
+    print("FATAL: SECRET_KEY no encontrada. Revisa tu archivo .env o la configuración de Render.")
+
+if not app.config['SQLALCHEMY_DATABASE_URI']:
+    print("FATAL: SQLALCHEMY_DATABASE_URI no encontrada. Revisa tu .env o Render.")
+
+
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
@@ -213,9 +223,7 @@ class ListToString(db.TypeDecorator):
 class User(db.Model):
     __tablename__ = 'users'
     id = db.Column(db.Integer, primary_key=True)
-    # google_id será el identificador único e inmutable de Google (CRUCIAL para login)
     google_id = db.Column(db.String(128), unique=True, nullable=False)
-    # Relación a la tabla de capturas
     captures = db.relationship('UserCapture', backref='user', lazy=True)
 
 # --- MODELO ORIGINAL RE-USADO: POKEMON KANTO (Solo metadata) ---
@@ -227,7 +235,6 @@ class PokemonKanto(db.Model):
     exclusivo = db.Column(db.String(10), nullable=False)
     
     def to_dict(self):
-        # Convertir a dict para la API
         return {
             'id': self.id,
             'name': self.name,
@@ -240,13 +247,11 @@ class UserCapture(db.Model):
     __tablename__ = 'user_captures'
     id = db.Column(db.Integer, primary_key=True)
     
-    # Claves externas para vincular usuario y pokemon
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     pokemon_id = db.Column(db.Integer, db.ForeignKey('pokemon_kanto.id'), nullable=False)
     
     is_caught = db.Column(db.Boolean, default=False)
     
-    # Asegurar que un usuario solo tenga un registro por Pokémon
     __table_args__ = (db.UniqueConstraint('user_id', 'pokemon_id', name='_user_pokemon_uc'),)
 
 # =======================================================
@@ -260,7 +265,6 @@ def generate_auth_token(user_id):
         'user_id': user_id,
         'exp': expiration
     }, app.config['SECRET_KEY'], algorithm="HS256")
-    # Nota: Flask-CORS puede tener problemas con la tupla, retornamos solo el string
     return token 
 
 def token_required(f):
@@ -268,14 +272,19 @@ def token_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
         token = None
-        # El token debe venir en la cabecera 'Authorization' o 'x-access-tokens'
+        # Busca el token en el encabezado 'Authorization' (Bearer) o 'x-access-tokens'
         if 'Authorization' in request.headers:
-            token = request.headers['Authorization'].split(" ")[1] # Asume formato "Bearer <token>"
-        elif 'x-access-tokens' in request.headers:
+            try:
+                # Intenta el formato "Bearer <token>"
+                token = request.headers['Authorization'].split(" ")[1]
+            except IndexError:
+                pass # Si no tiene formato Bearer, intentará buscar en x-access-tokens
+        
+        if not token and 'x-access-tokens' in request.headers:
             token = request.headers['x-access-tokens']
 
         if not token:
-            return jsonify({'message': 'Token de autenticación faltante.'}), 401
+            return jsonify({'message': 'Token de autenticación faltante o no válido.'}), 401
 
         try:
             # Decodificar el token usando tu clave secreta
@@ -283,7 +292,6 @@ def token_required(f):
             # Buscar al usuario basado en el ID codificado en el token
             current_user = User.query.filter_by(id=data['user_id']).first()
         except Exception as e:
-            print(f"Token error: {e}")
             return jsonify({'message': 'Token no válido o expirado.'}), 401
 
         # Pasar el objeto del usuario a la función de la ruta
@@ -292,30 +300,40 @@ def token_required(f):
     return decorated
 
 # =======================================================
-# 5. RUTAS API (Incluyendo la nueva ruta de Login)
+# 5. RUTAS API 
 # =======================================================
 
 @app.route('/api/status', methods=['GET'])
 def check_status():
     return jsonify({'status': 'ok', 'message': 'Backend de Pokédex activo.'})
 
-# --- RUTA DE LOGIN (FUTURO USO DE GOOGLE OAUTH) ---
+# --- RUTA DE LOGIN (Recibe el token de Google y devuelve el JWT interno) ---
 @app.route('/api/login', methods=['POST'])
 def login_user():
     """
-    Ruta que recibirá el token de Google, verificará la identidad y devolverá
-    nuestro JWT interno para la sesión.
+    Ruta que recibirá el token de Google. 
+    En la versión actual, solo extrae un 'google_id' para fines de prueba/estructura.
     """
     data = request.get_json()
-    google_id = data.get('google_id')
     
-    if not google_id:
-        return jsonify({'message': 'ID de Google no proporcionado.'}), 400
+    # En la versión real, aquí se verificaría el ID Token de Google.
+    # Por ahora, simularemos que ya tenemos el ID único del usuario:
+    id_token = data.get('id_token')
+    if not id_token:
+        return jsonify({'message': 'ID Token de Google no proporcionado.'}), 400
+    
+    # *** SIMULACIÓN DE ID DE GOOGLE (Temporal hasta implementar la verificación real) ***
+    # En un sistema real, el token se decodificaría para obtener el google_id.
+    # Por ahora, el frontend enviará el ID Token, y el backend necesita el google_id.
+    # DEBEMOS ASUMIR QUE EL ID_TOKEN AQUÍ CONTIENE LA INFORMACIÓN DEL GOOGLE_ID
+    # Por simplificación, aquí puedes usar una clave temporal para probar el login:
+    google_id = "temp_google_id_from_" + id_token[:10] # Ejemplo de extracción simplificada
+    # ******************************************************************************
 
     # 1. Buscar o Crear Usuario
     user = User.query.filter_by(google_id=google_id).first()
     if not user:
-        # Si no existe, crear nuevo usuario (en un proyecto real, se verificaría el token antes)
+        # Si no existe, crear nuevo usuario
         user = User(google_id=google_id)
         db.session.add(user)
         db.session.commit()
@@ -325,25 +343,42 @@ def login_user():
     
     return jsonify({
         'message': 'Login exitoso',
-        'token': token
+        'token': token,
+        'user_id': user.id 
     })
+
 
 # --- RUTA PRINCIPAL (DEBE DEVOLVER DATOS SEGÚN EL USUARIO - FUTURO CAMBIO) ---
 @app.route('/api/pokemon', methods=['GET'])
-def get_all_pokemon():
+@token_required # <--- Ahora esta ruta DEBE ser protegida
+def get_all_pokemon(current_user):
     """
-    Ruta temporal: Devuelve la lista completa de Pokémon (metadata) sin autenticación.
-    En el futuro, debe ser /api/user/pokemon y devolver los datos de captura.
+    Devuelve la lista completa de Pokémon (metadata) MÁS el estado de captura 
+    para el usuario logueado.
     """
     try:
+        # 1. Obtener toda la metadata de Pokémon
         pokemon_list = db.session.execute(db.select(PokemonKanto).order_by(PokemonKanto.id)).scalars().all()
-        return jsonify([p.to_dict() for p in pokemon_list])
+        
+        # 2. Obtener los estados de captura del usuario actual
+        captures = UserCapture.query.filter_by(user_id=current_user.id).all()
+        # Crear un mapa {pokemon_id: is_caught} para búsqueda rápida
+        capture_map = {c.pokemon_id: c.is_caught for c in captures}
+
+        result = []
+        for p in pokemon_list:
+            pokemon_dict = p.to_dict()
+            # Añadir el estado de captura (True/False) o False por defecto si no hay registro
+            pokemon_dict['is_caught'] = capture_map.get(p.id, False) 
+            result.append(pokemon_dict)
+            
+        return jsonify(result)
     except Exception as e:
         return jsonify({'error': f'Error al consultar DB: {str(e)}'}), 500
 
 # --- RUTA DE PRUEBA SEGURA (SOLO FUNCIONARÁ CON UN TOKEN VÁLIDO) ---
 @app.route('/api/secure-test', methods=['GET'])
-@token_required # <--- ¡PROTEGIDA POR EL DECORADOR!
+@token_required 
 def secure_test_route(current_user):
     return jsonify({
         'message': f'Acceso concedido a Usuario ID: {current_user.id}',
@@ -357,19 +392,15 @@ def secure_test_route(current_user):
 @app.route('/api/initialize-db', methods=['POST'])
 def initialize_database():
     """
-    Ruta para crear TODAS las tablas (incluyendo User y Capture) 
-    y poblar la tabla PokemonKanto.
+    Ruta para crear TODAS las tablas y poblar la tabla PokemonKanto.
     """
     with app.app_context():
         try:
-            # 1. Crear TODAS las Tablas (User, PokemonKanto, UserCapture)
             db.create_all()
 
-            # 2. Verificar si ya hay datos en PokemonKanto
             if db.session.query(PokemonKanto).count() > 0:
                 message = "✅ Base de datos principal ya poblada. Inicialización saltada."
             else:
-                # 3. Insertar los 151 Pokémon
                 for data in POKEMON_DATA:
                     new_pokemon = PokemonKanto(
                         id=data['id'],
@@ -392,4 +423,6 @@ def initialize_database():
 # =======================================================
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    # Usar el puerto 8080 si está definido en el entorno (Render) o 5000 por defecto
+    port = int(os.environ.get('PORT', 5000)) 
+    app.run(debug=True, port=port)

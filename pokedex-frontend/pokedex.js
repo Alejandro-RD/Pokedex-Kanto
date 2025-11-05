@@ -1,309 +1,367 @@
-// =======================================================================
-// 1. CONFIGURACIÓN GLOBAL Y DATOS
-// =======================================================================
+// pokedex.js
+// Lógica principal del Frontend de la Pokédex Kanto (RF/VH)
 
-// La base de datos ahora es una variable vacía que se llenará con la API
-let POKEMON_DATA = [];
-let filtroActual = 'todos'; 
-let filtroTextoActual = 'Todos'; 
-let terminoBusqueda = ''; 
+// ===============================================
+// 1. CONFIGURACIÓN Y VARIABLES GLOBALES
+// ===============================================
+
+// Almacena el token JWT una vez que el usuario inicia sesión.
+let AUTH_TOKEN = localStorage.getItem('userToken') || null;
+
+// Lista maestra de Pokémon, cargada desde el backend
+let listaPokemon = [];
+let filtroActual = 'todos';
+
+// 🚨 ¡IMPORTANTE! REEMPLAZAR con la URL de tu backend en Render
+const BACKEND_URL = "https://pokedex-api-docker.onrender.com"; 
+
+// ===============================================
+// 2. LÓGICA DE AUTENTICACIÓN DE GOOGLE
+// ===============================================
 
 /**
- * Genera la URL de la imagen de Pokémon.
+ * Función de Callback de Google Sign-In.
+ * Se llama automáticamente cuando Google proporciona las credenciales (JWT).
+ * @param {object} response - Objeto de respuesta de Google con el token de ID.
  */
-const getImageUrl = (id) => {
-    const paddedId = String(id).padStart(3, '0');
-    return `https://assets.pokemon.com/assets/cms2/img/pokedex/detail/${paddedId}.png`;
-};
+async function handleCredentialResponse(response) {
+    const loginUrl = `${BACKEND_URL}/api/login`;
 
-// =======================================================================
-// 2. LÓGICA DE INTERFAZ, FILTRADO Y PROGRESO
-// =======================================================================
+    try {
+        const res = await fetch(loginUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ token: response.credential }),
+        });
 
-/**
- * Calcula y actualiza la barra de progreso global (basada en los 151 Pokémon).
- */
-function actualizarProgresoGlobal() {
-    const totalPokemon = 151;
-    const totalCapturados = POKEMON_DATA.filter(p => p.capturado).length;
-    
-    // Calcular el porcentaje
-    const porcentaje = Math.round((totalCapturados / totalPokemon) * 100);
+        if (res.ok) {
+            const data = await res.json();
+            
+            // 1. Guardar el nuevo token JWT del backend
+            AUTH_TOKEN = data.token;
+            localStorage.setItem('userToken', AUTH_TOKEN);
 
-    const progressBar = document.getElementById('progreso-total');
-    const progressContainer = progressBar.closest('.progress-gba'); 
-    
-    if (progressBar && progressContainer) {
-        // 1. Actualizar ancho de la BARRA INTERNA
-        progressBar.style.width = `${porcentaje}%`;
-        
-        // 2. Actualizar el atributo data-progreso (leído por CSS para el texto estático)
-        progressContainer.setAttribute('data-progreso', `${totalCapturados} / ${totalPokemon} (${porcentaje}%)`);
-
-        // 3. Lógica de color de barra (opcional)
-        if (porcentaje < 30) {
-            progressBar.classList.remove('bg-success');
-            progressBar.classList.add('bg-warning');
+            // 2. Actualizar la UI
+            actualizarUI_LoginExitoso(data.username); 
+            
+            // 3. Recargar los datos, ahora con el progreso del usuario
+            await cargarDatosDelUsuario(); 
+            
         } else {
-            progressBar.classList.remove('bg-warning');
-            progressBar.classList.add('bg-success');
+            console.error("Error en el login del backend:", await res.text());
+            alert("Error al iniciar sesión. Inténtalo de nuevo.");
         }
+    } catch (error) {
+        console.error("Error de red o CORS al contactar al backend:", error);
+        alert("No se pudo conectar con el servidor para iniciar sesión.");
     }
 }
 
 /**
- * Dibuja la Pokédex en el DOM, aplicando filtros, búsqueda y el estado de captura.
+ * Muestra el nombre del usuario en el navbar y oculta el botón de login.
+ * @param {string} username - El nombre de usuario retornado por el backend.
  */
-function renderPokedex() {
-    // Si los datos aún no se han cargado, sale
-    if (POKEMON_DATA.length === 0) return; 
+function actualizarUI_LoginExitoso(username) {
+    const loginContainer = document.getElementById('login-container');
+    if (loginContainer) {
+        loginContainer.innerHTML = `<span class="text-white small me-3">Hola, ${username}</span>`;
+    }
+}
+
+// ===============================================
+// 3. CARGA DE DATOS INICIALES Y ESPECÍFICOS DEL USUARIO
+// ===============================================
+
+document.addEventListener('DOMContentLoaded', () => {
+    cargarDatosDelUsuario();
+});
+
+/**
+ * Carga la lista maestra de Pokémon y los datos específicos del usuario (capturados).
+ */
+async function cargarDatosDelUsuario() {
+    mostrarSpinner(true);
     
-    document.getElementById('loading-spinner').classList.remove('d-none');
-    
-    setTimeout(() => {
-        const listaPokemon = document.getElementById('lista-pokemon');
-        listaPokemon.innerHTML = ''; 
-        let capturadosCount = 0;
+    // Configura los headers de autenticación si hay un token
+    const headers = {
+        'Content-Type': 'application/json',
+    };
+    if (AUTH_TOKEN) {
+        headers['Authorization'] = `Bearer ${AUTH_TOKEN}`;
+    }
 
-        // 1. FILTRADO: Versión + Búsqueda
-        const pokemonFiltrados = POKEMON_DATA.filter(pokemon => {
-            const cumpleFiltroVersion = (
-                filtroActual === 'todos' ||
-                pokemon.exclusivo === filtroActual ||
-                pokemon.exclusivo === 'Ambos'
-            );
-            const cumpleFiltroBusqueda = (
-                pokemon.name.toLowerCase().includes(terminoBusqueda) ||
-                String(pokemon.id) === terminoBusqueda
-            );
-            return cumpleFiltroVersion && cumpleFiltroBusqueda;
-        });
-
-        // 2. GENERACIÓN DE TARJETAS
-        pokemonFiltrados.forEach(pokemon => {
-            if (pokemon.capturado) {
-                capturadosCount++;
-            }
-
-            const estadoClase = pokemon.capturado ? 'bg-success border-success' : 'bg-light border-secondary';
-            const colorTexto = pokemon.capturado ? 'text-white' : 'text-dark';
-            const infoButtonClass = pokemon.capturado ? 'text-white' : 'text-dark';
-
-            const pokemonCard = `
-                <div class="col">
-                    <div class="card h-100 shadow-sm ${estadoClase} ${colorTexto}" 
-                         style="cursor: pointer; transition: transform 0.2s; position: relative;"
-                         onclick="marcarCapturado(${pokemon.id})"> <button class="btn btn-sm btn-outline-light ${infoButtonClass}" 
-                                style="position: absolute; top: 5px; right: 5px; z-index: 10; border: none;"
-                                data-bs-toggle="modal" 
-                                data-bs-target="#pokemonModal" 
-                                onclick="event.stopPropagation(); mostrarDetalles(${pokemon.id})"> ⓘ
-                        </button>
-                        
-                        <img src="${getImageUrl(pokemon.id)}" class="card-img-top mx-auto p-2" alt="${pokemon.name}" 
-                             style="max-height: 100px; width: auto; opacity: ${pokemon.capturado ? 1 : 0.4};">
-                        <div class="card-body p-2 text-center">
-                            <h6 class="card-title mb-1">#${String(pokemon.id).padStart(3, '0')} ${pokemon.name}</h6>
-                            
-                            <div class="mb-1">
-                                ${pokemon.type.map(type => `<span class="badge type-${type.toLowerCase()}">${type}</span>`).join(' ')}
-                            </div>
-
-                            <p class="card-text small m-0">
-                                Estado: ${pokemon.capturado ? 'Capturado ✅' : 'Pendiente ❌'}
-                            </p>
-                        </div>
-                    </div>
-                </div>
-            `;
-            listaPokemon.innerHTML += pokemonCard;
-        });
-
-        // 3. Ocultar el Spinner y actualizar contadores
-        document.getElementById('loading-spinner').classList.add('d-none');
-        document.getElementById('contador-pokedex').textContent = `${capturadosCount}/${pokemonFiltrados.length} Vistos`;
-        actualizarProgresoGlobal(); 
+    try {
+        const response = await fetch(`${BACKEND_URL}/api/pokemon`, { headers: headers });
+        if (!response.ok) {
+            throw new Error('Error al cargar la Pokédex.');
+        }
         
-    }, 50); // Retraso de 50ms (simulación de carga)
+        const data = await response.json();
+        listaPokemon = data.pokemon;
+        
+        // Si hay un usuario logueado, ajustamos la UI
+        if (AUTH_TOKEN) {
+             // El backend ya nos devolvió el username en la carga inicial si el token es válido
+             // Asumiendo que el backend envía 'username' incluso en la ruta /api/pokemon si hay token
+             // Si el backend no lo hace, este paso se puede omitir o el backend debe ajustarse
+        }
+
+        renderizarListaPokemon(listaPokemon);
+        actualizarProgresoGlobal(listaPokemon);
+
+    } catch (error) {
+        console.error("Error al cargar datos:", error);
+        alert("No se pudo cargar la lista de Pokémon. Asegúrate de que el backend esté corriendo.");
+    } finally {
+        mostrarSpinner(false);
+    }
+}
+
+
+// ===============================================
+// 4. RENDERING Y VISUALIZACIÓN DE LA POKÉDEX
+// ===============================================
+
+/**
+ * Genera el HTML para cada tarjeta de Pokémon.
+ * @param {object} pokemon - Datos de un Pokémon.
+ * @returns {string} HTML de la tarjeta.
+ */
+function generarTarjeta(pokemon) {
+    const capturado = pokemon.capturado;
+    const claseCapturado = capturado ? 'bg-white' : 'bg-light';
+    const opacidadImagen = capturado ? 1 : 0.4;
+
+    // Determina el tipo de sprite basado en el filtro actual
+    let spriteUrl;
+    if (filtroActual === 'RF') {
+        spriteUrl = pokemon.sprite_rf;
+    } else if (filtroActual === 'VH') {
+        spriteUrl = pokemon.sprite_vh;
+    } else {
+        spriteUrl = pokemon.sprite_rf; // Por defecto, usamos RF si es 'todos'
+    }
+
+    return `
+        <div class="col pokemon-card" 
+             data-id="${pokemon.id}" 
+             data-name="${pokemon.nombre.toLowerCase()}" 
+             data-filtro="${filtroActual}"
+             onclick="mostrarDetalles(${pokemon.id})">
+            <div class="card h-100 ${claseCapturado} text-center" style="cursor: pointer;">
+                <div class="card-body">
+                    <img src="${spriteUrl}" 
+                         class="card-img-top mx-auto d-block" 
+                         alt="${pokemon.nombre}" 
+                         style="width: 96px; height: 96px; opacity: ${opacidadImagen};">
+                    <h6 class="card-title mt-2 mb-0">#${String(pokemon.id).padStart(3, '0')}</h6>
+                    <p class="card-text fw-bold text-dark">${pokemon.nombre}</p>
+                </div>
+                ${capturado ? '<span class="badge bg-success position-absolute top-0 start-0 m-1">✔️</span>' : ''}
+            </div>
+        </div>
+    `;
 }
 
 /**
- * Lee el valor del campo de búsqueda y desencadena la renderización.
+ * Renderiza la lista completa de Pokémon en el grid.
+ * @param {Array<object>} data - La lista de Pokémon a renderizar.
+ */
+function renderizarListaPokemon(data) {
+    const listaDiv = document.getElementById('lista-pokemon');
+    listaDiv.innerHTML = data.map(generarTarjeta).join('');
+}
+
+// ===============================================
+// 5. MANEJO DE EVENTOS (Filtro, Búsqueda, Modal)
+// ===============================================
+
+/**
+ * Muestra los detalles de un Pokémon en el Modal.
+ * @param {number} id - ID del Pokémon.
+ */
+function mostrarDetalles(id) {
+    const pokemon = listaPokemon.find(p => p.id === id);
+    if (!pokemon) return;
+
+    const modalTitle = document.getElementById('pokemonModalLabel');
+    const modalBody = document.getElementById('modal-body-contenido');
+    
+    modalTitle.textContent = `#${String(pokemon.id).padStart(3, '0')} - ${pokemon.nombre}`;
+    
+    // Determinar la URL del sprite y los tipos para el modal
+    const spriteModal = filtroActual === 'VH' ? pokemon.sprite_vh : pokemon.sprite_rf;
+    const tiposHtml = pokemon.tipos.map(tipo => `<span class="badge type-${tipo.toLowerCase()} me-1">${tipo}</span>`).join('');
+    
+    // Contenido del Modal
+    modalBody.innerHTML = `
+        <div class="text-center mb-3">
+            <img src="${spriteModal}" alt="${pokemon.nombre}" style="width: 128px; height: 128px;">
+        </div>
+        <p class="text-center">${tiposHtml}</p>
+        <p><strong>Descripción:</strong> ${pokemon.descripcion}</p>
+        <p><strong>Altura:</strong> ${pokemon.altura} m</p>
+        <p><strong>Peso:</strong> ${pokemon.peso} kg</p>
+        
+        <div class="d-grid gap-2 mt-3">
+            <button class="btn btn-lg btn-success" onclick="toggleCapturado(${pokemon.id}, true)">Marcar como Capturado</button>
+            <button class="btn btn-lg btn-danger" onclick="toggleCapturado(${pokemon.id}, false)">Marcar como NO Capturado</button>
+        </div>
+    `;
+
+    const modal = new bootstrap.Modal(document.getElementById('pokemonModal'));
+    modal.show();
+}
+
+/**
+ * Busca Pokémon por nombre o ID en la lista.
  */
 function buscarPokemon() {
-    const input = document.getElementById('input-busqueda');
-    terminoBusqueda = input.value.toLowerCase();
-    renderPokedex();
+    const query = document.getElementById('input-busqueda').value.toLowerCase();
+    const resultados = listaPokemon.filter(pokemon => 
+        pokemon.nombre.toLowerCase().includes(query) || String(pokemon.id).includes(query)
+    );
+    renderizarListaPokemon(resultados);
 }
 
 /**
- * Limpia el campo de búsqueda y reinicia el filtro de búsqueda.
+ * Limpia la barra de búsqueda y vuelve a mostrar todos los Pokémon.
  */
 function limpiarBusqueda() {
     document.getElementById('input-busqueda').value = '';
-    terminoBusqueda = '';
-    renderPokedex();
+    renderizarListaPokemon(listaPokemon);
 }
 
 /**
- * Aplica el filtro de versión y actualiza el botón de forma dinámica.
+ * Aplica un filtro de versión a los sprites mostrados.
+ * @param {string} filtro - 'todos', 'RF' o 'VH'.
+ * @param {string} texto - Texto a mostrar en el botón del dropdown.
  */
-function aplicarFiltro(version, texto) {
-    filtroActual = version;
-    filtroTextoActual = texto;
-    
-    const boton = document.getElementById('dropdownFiltro');
-    
-    // 1. Limpiar clases de color previas
-    boton.classList.remove('btn-danger', 'btn-success', 'btn-dark', 'btn-outline-danger', 'btn-outline-success', 'btn-outline-dark');
-    
-    // 2. Aplicar nueva clase de color
-    if (version === 'RF') {
-        boton.classList.add('btn-danger'); // Rojo Fuego
-    } else if (version === 'VH') {
-        boton.classList.add('btn-success'); // Verde Hoja
-    } else {
-        boton.classList.add('btn-dark'); // Neutro para 'Todos'
-    }
-    
-    // 3. Restaurar la clase 'dropdown-toggle' y actualizar texto
-    boton.classList.add('dropdown-toggle');
+function aplicarFiltro(filtro, texto) {
+    filtroActual = filtro;
     document.getElementById('filtro-texto').textContent = texto;
-    
-    renderPokedex();
+    // Re-renderizar para aplicar el sprite correcto
+    renderizarListaPokemon(listaPokemon);
 }
 
 
-// =======================================================================
-// 3. LÓGICA DE CAPTURA Y MODAL
-// =======================================================================
+// ===============================================
+// 6. MANEJO DE ESTADO (Captura y Progreso)
+// ===============================================
 
 /**
- * Cambia el estado de captura de un Pokémon y guarda el estado (Acción rápida).
+ * Alterna el estado de captura de un Pokémon y sincroniza con el backend.
+ * @param {number} id - ID del Pokémon a modificar.
+ * @param {boolean} nuevoEstado - true si está capturado, false si no.
  */
-function marcarCapturado(id) { 
-    const pokemonIndex = POKEMON_DATA.findIndex(p => p.id === id);
-    if (pokemonIndex !== -1) {
-        POKEMON_DATA[pokemonIndex].capturado = !POKEMON_DATA[pokemonIndex].capturado;
-        savePokedexState();
-        renderPokedex();
-    }
-}
-
-/**
- * Muestra los detalles de un Pokémon en el modal de Bootstrap (Solo información).
- */
-function mostrarDetalles(id) {
-    const pokemon = POKEMON_DATA.find(p => p.id === id);
-    const modalTitle = document.getElementById('pokemonModalLabel');
-    const modalBody = document.getElementById('modal-body-contenido');
-
-    if (!pokemon) {
-        modalTitle.textContent = "Error";
-        modalBody.innerHTML = "<p>Pokémon no encontrado.</p>";
-        return;
+async function toggleCapturado(id, nuevoEstado) {
+    if (!AUTH_TOKEN) {
+        alert("Debes iniciar sesión con Google para guardar tu progreso.");
+        return; 
     }
 
-    modalTitle.textContent = `#${String(pokemon.id).padStart(3, '0')} - ${pokemon.name}`;
-    
-    // Texto para la versión de exclusividad
-    let versionInfo;
-    if (pokemon.exclusivo === 'RF') {
-        versionInfo = 'Exclusivo de: **Rojo Fuego** 🔥';
-    } else if (pokemon.exclusivo === 'VH') {
-        versionInfo = 'Exclusivo de: **Verde Hoja** 🌿';
-    } else {
-        versionInfo = 'Disponible en: **Ambas Versiones** ☯️';
-    }
-
-    const contenido = `
-        <div class="text-center">
-            <img src="${getImageUrl(pokemon.id)}" alt="${pokemon.name}" style="max-height: 150px; margin-bottom: 15px;">
-            <div class="mb-3">
-                ${pokemon.type.map(type => `<span class="badge type-${type.toLowerCase()}">${type}</span>`).join(' ')}
-            </div>
-        </div>
-        
-        <p class="text-center fs-5">${versionInfo}</p>
-        
-        <hr>
-        <p class="text-center text-muted small">Estado de captura: 
-            <strong>${pokemon.capturado ? 'Capturado ✅' : 'Pendiente ❌'}</strong>
-        </p>
-    `;
-    
-    modalBody.innerHTML = contenido;
-}
-
-
-// =======================================================================
-// 4. LÓGICA DE PERSISTENCIA Y CARGA DE DATOS DESDE API
-// =======================================================================
-
-/**
- * Guarda el estado actual de captura de la Pokédex en el almacenamiento local del navegador.
- */
-function savePokedexState() {
-    const estadoCaptura = POKEMON_DATA.map(p => ({
-        id: p.id,
-        capturado: p.capturado
-    }));
-    localStorage.setItem('pokedexStateRFVH', JSON.stringify(estadoCaptura));
-}
-
-/**
- * Aplica los estados de captura guardados en localStorage sobre los datos de la API.
- */
-function loadPokedexState() {
-    const savedState = localStorage.getItem('pokedexStateRFVH');
-    // Solo aplica el estado si hay datos base cargados
-    if (savedState && POKEMON_DATA.length > 0) { 
-        const estado = JSON.parse(savedState);
-        estado.forEach(savedP => {
-            const pokemon = POKEMON_DATA.find(p => p.id === savedP.id);
-            if (pokemon) {
-                // El campo 'type' puede llegar como string ("Planta,Veneno") desde Flask. Lo convertimos a array si es necesario.
-                if (typeof pokemon.type === 'string') {
-                    pokemon.type = pokemon.type.split(',');
-                }
-                pokemon.capturado = savedP.capturado;
-            }
-        });
-    }
-}
-
-/**
- * Carga los datos de Pokémon desde la API de Flask.
- */
-async function loadPokedexData() {
     try {
-        // 1. CARGAR DATOS BASE DESDE EL BACKEND
-        const API_URL = 'https://pokedex-api-docker.onrender.com/api/pokemon';
-        const response = await fetch(API_URL);
-        
-        if (!response.ok) {
-            throw new Error(`Error al cargar datos de la API: ${response.statusText}`);
+        const response = await fetch(`${BACKEND_URL}/api/captura`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${AUTH_TOKEN}`
+            },
+            body: JSON.stringify({ pokemon_id: id, capturado: nuevoEstado })
+        });
+
+        if (response.ok) {
+            // 1. Actualizar el estado local
+            const index = listaPokemon.findIndex(p => p.id === id);
+            if (index !== -1) {
+                listaPokemon[index].capturado = nuevoEstado;
+            }
+
+            // 2. Re-renderizar la lista para reflejar el cambio en la tarjeta
+            renderizarListaPokemon(listaPokemon);
+            
+            // 3. Actualizar la barra de progreso
+            actualizarProgresoGlobal(listaPokemon);
+            
+            // 4. Cerrar el modal
+            const modalElement = document.getElementById('pokemonModal');
+            const modal = bootstrap.Modal.getInstance(modalElement);
+            if (modal) modal.hide();
+
+        } else {
+            alert("Error al guardar el progreso en el servidor.");
         }
-        
-        POKEMON_DATA = await response.json(); 
-        
-        // 2. CARGAR ESTADO DE CAPTURA LOCAL
-        loadPokedexState(); 
-        
     } catch (error) {
-        console.error("❌ No se pudo conectar al backend. Asegúrate de que Flask esté corriendo en http://127.0.0.1:5000:", error);
-        alert("Error de conexión con el backend. Revisa la consola (F12).");
+        console.error("Error al sincronizar captura:", error);
+        alert("Error de conexión al guardar el progreso.");
     }
 }
 
-// =======================================================================
-// 5. INICIALIZACIÓN DE LA APLICACIÓN
-// =======================================================================
+/**
+ * Actualiza la barra de progreso y el contador global.
+ * @param {Array<object>} data - La lista de Pokémon.
+ */
+function actualizarProgresoGlobal(data) {
+    const total = 151;
+    const capturados = data.filter(p => p.capturado).length;
+    const porcentaje = Math.round((capturados / total) * 100);
 
-document.addEventListener('DOMContentLoaded', async () => {
-    // 1. Cargar los datos de la API
-    await loadPokedexData(); 
+    const barra = document.getElementById('progreso-total');
+    const contador = document.getElementById('contador-pokedex');
+
+    // Actualiza la barra de progreso
+    barra.style.width = `${porcentaje}%`;
+    barra.setAttribute('aria-valuenow', capturados);
+    barra.setAttribute('data-progreso', `${capturados}/${total} (${porcentaje}%)`); // Texto estático en CSS
+
+    // Actualiza el contador
+    contador.textContent = `${capturados}/${total} Vistos`;
     
-    // 2. Aplicar filtro y renderizar solo después de que los datos estén listos
-    aplicarFiltro(filtroActual, filtroTextoActual); 
+    // Lógica de Tonos de Color (Morado Dinámico)
+    barra.classList.remove('progress-tone-1', 'progress-tone-2', 'progress-tone-3', 'progress-tone-4');
+    if (porcentaje === 100) {
+        barra.classList.add('progress-tone-4'); // Máximo
+    } else if (porcentaje >= 75) {
+        barra.classList.add('progress-tone-4');
+    } else if (porcentaje >= 50) {
+        barra.classList.add('progress-tone-3');
+    } else if (porcentaje >= 25) {
+        barra.classList.add('progress-tone-2');
+    } else if (porcentaje > 0) {
+        barra.classList.add('progress-tone-1');
+    }
+}
+
+// ===============================================
+// 7. UTILIDADES
+// ===============================================
+
+/**
+ * Muestra u oculta el spinner de carga.
+ * @param {boolean} mostrar - true para mostrar, false para ocultar.
+ */
+function mostrarSpinner(mostrar) {
+    const spinner = document.getElementById('loading-spinner');
+    if (spinner) {
+        spinner.classList.toggle('d-none', !mostrar);
+    }
+}
+
+// Inicializa el contador del navbar con el valor correcto al cargar
+document.addEventListener('DOMContentLoaded', () => {
+    // Si hay un token guardado, intentamos cargar los datos y el username
+    if (AUTH_TOKEN) {
+        // En este punto, solo ocultamos el botón de login para evitar el parpadeo
+        // La función 'cargarDatosDelUsuario' se encargará de verificar el token
+        // y de llamar a 'actualizarUI_LoginExitoso' si es válido.
+        // Si no tienes una ruta para obtener solo el username, el backend debe enviarlo
+        // junto con la lista de pokémon en la ruta /api/pokemon.
+        const loginContainer = document.getElementById('login-container');
+        if (loginContainer) {
+            loginContainer.innerHTML = `<span class="text-white small me-3">Cargando progreso...</span>`; 
+        }
+    }
+    cargarDatosDelUsuario();
 });

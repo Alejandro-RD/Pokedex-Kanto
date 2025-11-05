@@ -92,55 +92,53 @@ body {
 }
 
 /* ==================================== */
-/* Estilo Barra de Progreso GBA (CORRECCIÓN FINAL) */
+/* Estilo Barra de Progreso GBA (FINAL: USANDO BOX-SHADOW) */
 /* ==================================== */
 
 .progress-gba {
-    border: none; 
-    border-radius: 12px; /* Bordes redondeados */
-    /* El fondo del CONTENEDOR ahora es el borde bicolor */
-    background-image: linear-gradient(to right, #CC0000 0%, #CC0000 50%, #198754 50%, #198754 100%);
-    
+    /* Fondo que se ve cuando la barra NO está llena (Gris claro) */
+    background-color: #E0E0E0 !important; 
+    border-radius: 7px; 
     position: relative; 
     height: 25px;
-    z-index: 1; 
+    z-index: auto; 
     overflow: hidden;
     
-    /* El padding crea el espacio para que se vea el borde */
-    padding: 3px;
+    /* EL TRUCO: Borde Bicolor con Doble Sombra Interna */
+    /* Usamos un color de sombra para la mitad izquierda (Rojo) y la mitad derecha (Verde) */
+    box-shadow: 
+        /* Borde Izquierdo (Rojo Fuego) */
+        inset 3px 0 0 0 #CC0000, 
+        /* Borde Derecho (Verde Hoja) */
+        inset -3px 0 0 0 #198754; 
+
+    border: 3px solid transparent; /* Necesario para que box-shadow se aplique correctamente al borde */
+    padding: 0; /* Quitamos el padding para usar solo el box-shadow */
 }
 
-/* Pseudo-elemento para el fondo gris interno (El "fondo inactivo" de la barra) */
+/* Pseudo-elemento para crear el Contorno Bicolor (Se pinta sobre el fondo gris) */
 .progress-gba::before {
     content: '';
     position: absolute;
-    top: 3px;    /* 3px de borde */
-    left: 3px;   /* 3px de borde */
-    right: 3px;  /* 3px de borde */
-    bottom: 3px; /* 3px de borde */
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    border-radius: 12px;
+    z-index: 4; /* Debe estar por encima del fondo gris y de la barra que se llena */
+    pointer-events: none;
     
-    /* Fondo gris que se ve a través del borde */
-    background-color: #AAAAAA; 
-    border-radius: 9px; /* Bordes redondeados internos */
-    z-index: 1; /* Bajo la barra de progreso que se llena (z-index: 3) */
+    /* El truco: Usar border con una imagen de gradiente como borde, o box-shadow */
+    /* Usaremos un borde sólido con el gradiente de fondo, y lo cortaremos para que se vea el relleno. */
+
+    /* Esto crea el efecto de borde bicolor */
+    border: 3px solid;
+    border-image: linear-gradient(to right, #CC0000 0%, #CC0000 50%, #198754 50%, #198754 100%) 1;
 }
 
-/* Estilo de la barra interna (progreso que se llena) */
-.progress-gba .progress-bar {
-    z-index: 3; 
-    background-color: #CC0000 !important; /* Rojo Fuego para la barra que se llena */
-    height: 100%;
-    border-radius: 9px;
-    transition: width 0.6s ease;
-    
-    /* Hacemos que la barra de progreso NO muestre el texto (ya es estático) */
-    text-indent: -9999px; 
-    position: relative; 
-}
-
-/* Estilo del Texto de Progreso Estático */
+/* Pseudo-elemento para el texto estático (::after) */
 .progress-gba::after {
-    /* El texto estático debe estar encima de todo */
+    /* ... (Mantenemos el código que hace que el texto sea blanco y centrado) ... */
     content: attr(data-progreso); 
     position: absolute;
     top: 0;
@@ -150,14 +148,54 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
-    color: #212529; /* Color oscuro para el texto estático */
+    color: #212529; 
     font-weight: bold;
+    text-shadow: none; 
     font-size: 0.9rem;
-    z-index: 5; /* Asegura que el texto esté visible sobre la barra que se llena */
+    z-index: 5; 
     pointer-events: none; 
 }
 
-/* Eliminamos los estilos del borde dividido anterior, ya no son necesarios */
+/* Estilo de la barra interna (progreso que se llena) */
+.progress-gba .progress-bar {
+    z-index: 2; 
+    
+    background-color: #8A2BE2 !important; 
+    
+    color: white; 
+    height: 100%;
+    
+    /* CRUCIAL: Asegurar el redondeo para el inicio de la barra */
+    border-radius: 15px; /* Aplicar a las 4 esquinas */
+
+    /* Forzamos el redondeo específico para la esquina superior izquierda */
+    border-top-left-radius: 12px; 
+    border-bottom-left-radius: 12px;
+
+    transition: width 0.6s ease;
+    
+    text-indent: -9999px; 
+    position: relative;
+}
+
+/* Bloque a ELIMINAR O OCULTAR (Estructuras anteriores que causan conflicto): */
 .progress-border-wrap, .progress-half, .border-rf, .border-vh {
     display: none !important; 
+}
+
+/* ==================================== */
+/* Tonos Dinámicos de la Barra de Progreso */
+/* ==================================== */
+
+.progress-bar.progress-tone-1 {
+    background-color: #D6C2F7 !important; /* Más claro: 0-25% */
+}
+.progress-bar.progress-tone-2 {
+    background-color: #B893F1 !important; /* Medio claro: 25-50% */
+}
+.progress-bar.progress-tone-3 {
+    background-color: #9D6AD1 !important; /* Medio oscuro: 50-75% */
+}
+.progress-bar.progress-tone-4 {
+    background-color: #8A2BE2 !important; /* Más fuerte: 75%+ */
 }
