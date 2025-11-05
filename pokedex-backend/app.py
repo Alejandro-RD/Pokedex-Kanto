@@ -185,12 +185,12 @@ VERCEL_DOMAINS = [
 ]
 CORS(app, resources={
     r"/api/*": {
-        "origins": ["*"],
+        "origins": ["*"], 
         "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
         "allow_headers": ["Content-Type", "Authorization", "x-access-tokens"],
         "supports_credentials": True
     }
-}) 
+})
 
 # --- CONFIGURACIÓN DE SEGURIDAD Y DB (USA OS.ENVIRON.GET PARA SOPORTAR .ENV Y RENDER) ---
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY')
@@ -308,12 +308,17 @@ def check_status():
     return jsonify({'status': 'ok', 'message': 'Backend de Pokédex activo.'})
 
 # --- RUTA DE LOGIN (Recibe el token de Google y devuelve el JWT interno) ---
-@app.route('/api/login', methods=['POST'])
+@app.route('/api/login', methods=['POST', 'OPTIONS'])
 def login_user():
     """
     Ruta que recibirá el token de Google. 
     En la versión actual, solo extrae un 'google_id' para fines de prueba/estructura.
     """
+    # Si el método es OPTIONS, la respuesta ya es manejada por Flask-CORS
+    # y simplemente retornará 200 OK. No necesitamos lógica adicional aquí.
+    if request.method == 'OPTIONS':
+        return '', 200
+
     data = request.get_json()
     
     # En la versión real, aquí se verificaría el ID Token de Google.
