@@ -300,51 +300,52 @@ def token_required(f):
 def check_status():
     return jsonify({'status': 'ok', 'message': 'Backend de Pokédex activo.'})
 
-# --- RUTA DE LOGIN (Recibe el token de Google y devuelve el JWT interno) ---
-@app.route('/api/login', methods=['POST', 'OPTIONS'])
+# pokedex-backend/app.py (Ruta de Login)
+
+@app.route('/api/login', methods=['POST', 'OPTIONS']) 
 def login_user():
     """
-    Ruta que recibirá el token de Google. 
-    En la versión actual, solo extrae un 'google_id' para fines de prueba/estructura.
+    Ruta que recibirá el token de Google, verificará la identidad y devolverá
+    nuestro JWT interno para la sesión.
     """
-    # Si el método es OPTIONS, la respuesta ya es manejada por Flask-CORS
-    # y simplemente retornará 200 OK. No necesitamos lógica adicional aquí.
+    # 1. Manejo Explícito del Preflight de CORS
     if request.method == 'OPTIONS':
-        return '', 200
+        # Simplemente devolvemos 200 OK. Flask-CORS añade las cabeceras necesarias.
+        return '', 200 
 
-    data = request.get_json()
-    
-    # En la versión real, aquí se verificaría el ID Token de Google.
-    # Por ahora, simularemos que ya tenemos el ID único del usuario:
-    id_token = data.get('id_token')
-    if not id_token:
-        return jsonify({'message': 'ID Token de Google no proporcionado.'}), 400
-    
-    # *** SIMULACIÓN DE ID DE GOOGLE (Temporal hasta implementar la verificación real) ***
-    # En un sistema real, el token se decodificaría para obtener el google_id.
-    # Por ahora, el frontend enviará el ID Token, y el backend necesita el google_id.
-    # DEBEMOS ASUMIR QUE EL ID_TOKEN AQUÍ CONTIENE LA INFORMACIÓN DEL GOOGLE_ID
-    # Por simplificación, aquí puedes usar una clave temporal para probar el login:
-    google_id = "temp_google_id_from_" + id_token[:10] # Ejemplo de extracción simplificada
-    # ******************************************************************************
+    # 2. Lógica del POST
+    try:
+        data = request.get_json()
+        id_token = data.get('token') # <--- La clave que tu frontend envía es 'token' (revisar)
+        
+        if not id_token:
+            return jsonify({'message': 'ID Token de Google no proporcionado.'}), 400
 
-    # 1. Buscar o Crear Usuario
-    user = User.query.filter_by(google_id=google_id).first()
-    if not user:
-        # Si no existe, crear nuevo usuario
-        user = User(google_id=google_id)
-        db.session.add(user)
-        db.session.commit()
+        # En la versión real, aquí se verificaría el ID Token de Google.
+        # Por ahora, simularemos que ya tenemos el ID único del usuario:
+        # Extraemos una parte del token como ID temporal
+        google_id = "temp_google_id_from_" + id_token[:10] 
+        
+        # 1. Buscar o Crear Usuario (y devolver el JWT)
+        user = User.query.filter_by(google_id=google_id).first()
+        if not user:
+            user = User(google_id=google_id)
+            db.session.add(user)
+            db.session.commit()
 
-    # 2. Generar Auth Token interno
-    token = generate_auth_token(user.id)
-    
-    return jsonify({
-        'message': 'Login exitoso',
-        'token': token,
-        'user_id': user.id 
-    })
+        # 2. Generar Auth Token interno
+        token = generate_auth_token(user.id)
+        
+        return jsonify({
+            'message': 'Login exitoso',
+            'token': token,
+            'username': f'Entrenador #{user.id}' # Retornamos un nombre temporal
+        }), 200 # <-- Aseguramos el código 200 de éxito
 
+    except Exception as e:
+        # Si algo falla en la lógica POST (ej: JSON mal formado)
+        print(f"ERROR DURANTE EL PROCESO DE LOGIN POST: {e}")
+        return jsonify({'message': 'Error interno del servidor durante el login.'}), 500
 
 # --- RUTA PRINCIPAL (DEBE DEVOLVER DATOS SEGÚN EL USUARIO - FUTURO CAMBIO) ---
 @app.route('/api/pokemon', methods=['GET'])
